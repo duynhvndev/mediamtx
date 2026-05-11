@@ -1269,6 +1269,9 @@ components:
           type: string
         userAgent:
           type: string
+        jti:
+          type: string
+          description: JWT ID (jti claim) of the token used to authenticate this session, when JWT auth is enabled.
         isCDN:
           type: boolean
         outboundBytes:
@@ -1339,6 +1342,9 @@ components:
           type: string
         userAgent:
           type: string
+        jti:
+          type: string
+          description: JWT ID (jti claim) of the token used to authenticate this connection, when JWT auth is enabled.
         inboundBytes:
           type: integer
           format: uint64
@@ -1981,6 +1987,156 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+
+  /v3/auth/revoke:
+    post:
+      operationId: authRevokeAdd
+      tags: [Authentication]
+      summary: Revokes a JWT by its jti and kicks every active RTMP/RTMPS/HLS session using that token.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [jti]
+              properties:
+                jti:
+                  type: string
+                  description: JWT ID (jti claim) to revoke.
+      responses:
+        '200':
+          description: the request was successful.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  jti:
+                    type: string
+                  kickedSessions:
+                    type: integer
+                    description: Number of active sessions terminated as a result.
+        '400':
+          description: invalid request body.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /v3/auth/revoke/{jti}:
+    delete:
+      operationId: authRevokeDelete
+      tags: [Authentication]
+      summary: Removes a jti from the revocation list (does not unkick previously kicked sessions).
+      parameters:
+        - name: jti
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: the request was successful.
+        '400':
+          description: missing jti.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /v3/auth/revoke/list:
+    get:
+      operationId: authRevokeList
+      tags: [Authentication]
+      summary: Lists currently revoked jtis.
+      responses:
+        '200':
+          description: the request was successful.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: string
+
+  /v3/auth/user/ban:
+    post:
+      operationId: authUserBanAdd
+      tags: [Authentication]
+      summary: Bans a user by JWT subject and kicks every active RTMP/RTMPS/HLS session of that user.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [subject]
+              properties:
+                subject:
+                  type: string
+                  description: JWT subject (sub claim) to ban.
+      responses:
+        '200':
+          description: the request was successful.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  subject:
+                    type: string
+                  kickedSessions:
+                    type: integer
+                    description: Number of active sessions terminated as a result.
+        '400':
+          description: invalid request body.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /v3/auth/user/ban/{subject}:
+    delete:
+      operationId: authUserBanDelete
+      tags: [Authentication]
+      summary: Removes a subject from the user ban list (does not unkick previously kicked sessions).
+      parameters:
+        - name: subject
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: the request was successful.
+        '400':
+          description: missing subject.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /v3/auth/user/ban/list:
+    get:
+      operationId: authUserBanList
+      tags: [Authentication]
+      summary: Lists currently banned subjects.
+      responses:
+        '200':
+          description: the request was successful.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: string
 
   /v3/config/global/get:
     get:
