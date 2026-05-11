@@ -60,6 +60,7 @@ type PathDescribeReq struct {
 type PathAddPublisherRes struct {
 	Path      Path
 	User      string
+	JTI       string
 	SubStream *stream.SubStream
 	Err       error
 }
@@ -72,7 +73,11 @@ type PathAddPublisherReq struct {
 	ReplaceNTP    bool
 	ConfToCompare *conf.Path
 	AccessRequest PathAccessRequest
-	Res           chan PathAddPublisherRes
+	// Filled in by pathManager after authentication, before the request
+	// is forwarded to the path. Used by hooks to expose publisher identity.
+	User string
+	JTI  string
+	Res  chan PathAddPublisherRes
 }
 
 // PathRemovePublisherReq contains arguments of RemovePublisher().
@@ -85,6 +90,7 @@ type PathRemovePublisherReq struct {
 type PathAddReaderRes struct {
 	Path   Path
 	User   string
+	JTI    string
 	Stream *stream.Stream
 	Err    error
 }

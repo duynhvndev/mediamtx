@@ -33,6 +33,7 @@ type APIRTMPConn struct {
 	Query                   string           `json:"query"`
 	User                    string           `json:"user"`
 	UserAgent               string           `json:"userAgent"`
+	JTI                     string           `json:"jti"`
 	InboundBytes            uint64           `json:"inboundBytes"`
 	OutboundBytes           uint64           `json:"outboundBytes"`
 	OutboundFramesDiscarded uint64           `json:"outboundFramesDiscarded"`

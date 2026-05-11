@@ -88,7 +88,7 @@ const (
 )
 
 type metricsAuthManager interface {
-	Authenticate(req *auth.Request) (string, *auth.Error)
+	Authenticate(req *auth.Request) (string, string, *auth.Error)
 }
 
 type metricsParent interface {
@@ -196,7 +196,7 @@ func (m *Metrics) middlewareAuth(ctx *gin.Context) {
 		IP:          net.ParseIP(ctx.ClientIP()),
 	}
 
-	_, err := m.AuthManager.Authenticate(req)
+	_, _, err := m.AuthManager.Authenticate(req)
 	if err != nil {
 		auth.DelayBruteForce(err)
 
