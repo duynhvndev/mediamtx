@@ -1,0 +1,114 @@
+# Developer-facing native-Go Makefile for the JWT revoke / user-ban fork.
+# Upstream `Makefile` is left untouched so we can rebase upstream cleanly.
+#
+# Usage:
+#   make -f Makefile.dev help
+#   make -f Makefile.dev verify         # full pre-push check
+#
+# Shortcut: alias mdev='make -f Makefile.dev'
+
+BINARY      ?= mediamtx-fork
+CONFIG      ?= ./mediamtx.yml
+COVER_OUT   ?= coverage.txt
+
+# Test scope: packages touched by the fork. Override with PKGS=...
+FORK_PKGS   ?= ./internal/auth/... \
+               ./internal/api/... \
+               ./internal/hooks/... \
+               ./internal/defs/... \
+               ./internal/pprof/... \
+               ./internal/playback/... \
+               ./internal/metrics/...
+
+# Detect race support (64-bit only)
+ifeq ($(shell getconf LONG_BIT 2>/dev/null),64)
+  RACE := -race
+endif
+
+GREEN := \033[0;32m
+RESET := \033[0m
+
+.PHONY: help generate vet build run test test-all test-fork lint-spec lint-go2api lint-conf \
+        fmt fmt-check swagger swagger-stop verify clean
+
+help:
+	@echo "Fork developer targets (make -f Makefile.dev <target>):"
+	@echo ""
+	@echo "  generate     - run go generate (embeds VERSION, openapi.yaml, etc.)"
+	@echo "  vet          - go vet ./..."
+	@echo "  build        - build local dev binary ($(BINARY))"
+	@echo "  run          - run ./$(BINARY) with $(CONFIG)"
+	@echo "  test         - go test on fork-touched packages (fast)"
+	@echo "  test-all     - go test ./... (slow, includes core)"
+	@echo "  lint-go2api  - assert openapi.yaml matches Go structs in internal/defs"
+	@echo "  lint-conf    - validate conf struct tags"
+	@echo "  lint-spec    - lint openapi.yaml with Redocly (needs Docker)"
+	@echo "  fmt          - gofumpt -w . (needs gofumpt)"
+	@echo "  fmt-check    - report files needing format (exit non-zero if any)"
+	@echo "  swagger      - serve api/openapi.yaml via swagger-ui at :8080 (Docker)"
+	@echo "  swagger-stop - stop the swagger-ui container"
+	@echo "  verify       - generate + vet + build + test + lint-go2api + lint-conf"
+	@echo "  clean        - remove build/coverage artifacts"
+
+generate:
+	@printf "$(GREEN)==> go generate$(RESET)\n"
+	go generate ./...
+
+vet:
+	@printf "$(GREEN)==> go vet$(RESET)\n"
+	go vet ./...
+
+build: generate
+	@printf "$(GREEN)==> go build -> ./$(BINARY)$(RESET)\n"
+	go build -o ./$(BINARY) .
+
+run:
+	./$(BINARY) $(CONFIG)
+
+test:
+	@printf "$(GREEN)==> go test (fork packages)$(RESET)\n"
+	go test $(RACE) -count=1 -timeout 120s $(FORK_PKGS)
+
+test-all:
+	@printf "$(GREEN)==> go test ./... (full)$(RESET)\n"
+	go test $(RACE) -count=1 -timeout 600s -coverprofile=$(COVER_OUT) ./...
+
+lint-go2api:
+	@printf "$(GREEN)==> openapi.yaml <-> Go structs$(RESET)\n"
+	go test -tags enable_linters ./internal/linters/go2api
+
+lint-conf:
+	@printf "$(GREEN)==> conf struct tags$(RESET)\n"
+	go test -tags enable_linters ./internal/linters/conf
+
+lint-spec:
+	@printf "$(GREEN)==> openapi.yaml lint (Redocly)$(RESET)\n"
+	docker run --rm -v "$(CURDIR)/api:/s" -w /s \
+	  node:20-alpine3.23 \
+	  sh -c "yarn global add @redocly/cli@1.0.0-beta.123 >/dev/null && openapi lint openapi.yaml"
+
+fmt:
+	@command -v gofumpt >/dev/null || { echo "install: go install mvdan.cc/gofumpt@latest"; exit 1; }
+	gofumpt -w .
+
+fmt-check:
+	@command -v gofumpt >/dev/null || { echo "install: go install mvdan.cc/gofumpt@latest"; exit 1; }
+	@out=$$(gofumpt -l .); if [ -n "$$out" ]; then echo "Need formatting:"; echo "$$out"; exit 1; fi
+	@echo "fmt-check: OK"
+
+swagger:
+	@printf "$(GREEN)==> Swagger UI at http://localhost:8080$(RESET)\n"
+	docker run -d --rm --name mediamtx-swagger -p 8080:8080 \
+	  -v "$(CURDIR)/api/openapi.yaml:/openapi.yaml:ro" \
+	  -e SWAGGER_JSON=/openapi.yaml \
+	  swaggerapi/swagger-ui >/dev/null
+	@echo "Started. Stop with: make -f Makefile.dev swagger-stop"
+
+swagger-stop:
+	-@docker stop mediamtx-swagger >/dev/null 2>&1 && echo "stopped" || echo "not running"
+
+verify: generate vet build test lint-go2api lint-conf
+	@printf "$(GREEN)==> verify: ALL GREEN$(RESET)\n"
+
+clean:
+	rm -f ./$(BINARY) $(COVER_OUT) coverage-internal.txt coverage-core.txt
