@@ -38,6 +38,7 @@ type session struct {
 	created         time.Time
 	query           string
 	user            string
+	jti             string
 	lastRequestTime atomic.Int64
 	bytesSent       atomic.Uint64
 	path            defs.Path
@@ -80,6 +81,7 @@ func (s *session) initialize(ctx *gin.Context) error {
 	s.path = res.Path
 	s.stream = res.Stream
 	s.user = res.User
+	s.jti = res.JTI
 
 	muxer, err := s.server.getMuxer(serverGetMuxerReq{
 		path:           s.pathName,
@@ -131,6 +133,8 @@ func (s *session) initialize(ctx *gin.Context) error {
 		ExternalCmdEnv:  res.Path.ExternalCmdEnv(),
 		Reader:          *s.APIReaderDescribe(),
 		Query:           s.query,
+		User:            s.user,
+		JTI:             s.jti,
 	})
 
 	return nil
@@ -167,6 +171,7 @@ func (s *session) apiItem() *defs.APIHLSSession {
 		Path:          s.pathName,
 		Query:         s.query,
 		User:          s.user,
+		JTI:           s.jti,
 		IsCDN:         s.isCDN,
 		OutboundBytes: outboundBytes,
 	}

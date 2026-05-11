@@ -17,7 +17,7 @@ import (
 )
 
 type serverAuthManager interface {
-	Authenticate(req *auth.Request) (string, *auth.Error)
+	Authenticate(req *auth.Request) (string, string, *auth.Error)
 }
 
 // Server is the playback server.
@@ -141,7 +141,7 @@ func (s *Server) doAuth(ctx *gin.Context, pathName string) bool {
 		IP:          net.ParseIP(ctx.ClientIP()),
 	}
 
-	_, err := s.AuthManager.Authenticate(req)
+	_, _, err := s.AuthManager.Authenticate(req)
 	if err != nil {
 		if err.AskCredentials {
 			ctx.Header("WWW-Authenticate", `Basic realm="mediamtx"`)
