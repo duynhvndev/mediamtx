@@ -195,7 +195,7 @@ func TestAuthInternal(t *testing.T) {
 				}
 
 				// first request with empty credentials
-				_, err := m.Authenticate(&Request{
+				_, _, err := m.Authenticate(&Request{
 					Action:      req.Action,
 					Path:        req.Path,
 					Credentials: &Credentials{},
@@ -207,7 +207,7 @@ func TestAuthInternal(t *testing.T) {
 				}, err)
 
 				// second request
-				user, err := m.Authenticate(req)
+				user, _, err := m.Authenticate(req)
 				if outcome == "ok" {
 					require.Nil(t, err)
 					require.Equal(t, "testuser", user)
@@ -252,7 +252,7 @@ func TestAuthInternalCustomVerifyFunc(t *testing.T) {
 				},
 			}
 
-			user, err := m.Authenticate(req1)
+			user, _, err := m.Authenticate(req1)
 			if ca == "ok" {
 				require.Nil(t, err)
 				require.Equal(t, "myuser", user)
@@ -344,7 +344,7 @@ func TestAuthHTTP(t *testing.T) {
 			}
 
 			// first request with empty credentials
-			_, err2 := m.Authenticate(&Request{
+			_, _, err2 := m.Authenticate(&Request{
 				Action:      req.Action,
 				Path:        req.Path,
 				Credentials: &Credentials{},
@@ -356,7 +356,7 @@ func TestAuthHTTP(t *testing.T) {
 			}, err2)
 
 			// second request
-			user, err2 := m.Authenticate(req)
+			user, _, err2 := m.Authenticate(req)
 			if outcome == "ok" {
 				require.Nil(t, err2)
 				require.Equal(t, "testpublisher", user)
@@ -411,7 +411,7 @@ func TestAuthHTTPFingerprint(t *testing.T) {
 		HTTPFingerprint: "33949e05fffb5ff3e8aa16f8213a6251b4d9363804ba53233c4da9a46d6f2739",
 	}
 
-	user, err2 := m.Authenticate(&Request{
+	user, _, err2 := m.Authenticate(&Request{
 		Action:   conf.AuthActionPublish,
 		Path:     "teststream",
 		Protocol: ProtocolRTSP,
@@ -434,7 +434,7 @@ func TestAuthHTTPExclude(t *testing.T) {
 		}},
 	}
 
-	user, err := m.Authenticate(&Request{
+	user, _, err := m.Authenticate(&Request{
 		Action:   conf.AuthActionPublish,
 		Path:     "teststream",
 		Query:    "param=value",
@@ -576,7 +576,7 @@ func TestAuthJWT(t *testing.T) {
 			}
 
 			// first request with empty credentials
-			_, err2 := m.Authenticate(&Request{
+			_, _, err2 := m.Authenticate(&Request{
 				Action:      req.Action,
 				Path:        req.Path,
 				Credentials: &Credentials{},
@@ -588,7 +588,7 @@ func TestAuthJWT(t *testing.T) {
 			}, err2)
 
 			// second request
-			user, err2 := m.Authenticate(req)
+			user, _, err2 := m.Authenticate(req)
 			require.Nil(t, err2)
 			require.Equal(t, "somebody", user)
 		})
@@ -662,7 +662,7 @@ func TestAuthJWTQueryParameter(t *testing.T) {
 				JWTClaimKey: "mediamtx_permissions",
 			}
 
-			user, err2 := m.Authenticate(&Request{
+			user, _, err2 := m.Authenticate(&Request{
 				Action:   conf.AuthActionPublish,
 				Path:     "mypath",
 				Query:    ca + "=" + ss,
@@ -688,7 +688,7 @@ func TestAuthJWTExclude(t *testing.T) {
 		}},
 	}
 
-	user, err := m.Authenticate(&Request{
+	user, _, err := m.Authenticate(&Request{
 		Action:      conf.AuthActionPublish,
 		Path:        "teststream",
 		Query:       "param=value",
@@ -789,7 +789,7 @@ func TestAuthJWTIssuer(t *testing.T) {
 				JWTIssuer:   ca.jwtIssuer,
 			}
 
-			_, err := m.Authenticate(&Request{
+			_, _, err := m.Authenticate(&Request{
 				Action:   conf.AuthActionPublish,
 				Path:     "mypath",
 				Protocol: ProtocolRTSP,
@@ -903,7 +903,7 @@ func TestAuthJWTAudience(t *testing.T) {
 				JWTAudience: ca.jwtAudience,
 			}
 
-			_, err := m.Authenticate(&Request{
+			_, _, err := m.Authenticate(&Request{
 				Action:   conf.AuthActionPublish,
 				Path:     "mypath",
 				Protocol: ProtocolRTSP,
@@ -994,7 +994,7 @@ func TestAuthJWTRefresh(t *testing.T) {
 		ss, err = token.SignedString(key)
 		require.NoError(t, err)
 
-		user, err2 := m.Authenticate(&Request{
+		user, _, err2 := m.Authenticate(&Request{
 			Action:   conf.AuthActionPublish,
 			Path:     "mypath",
 			Query:    "param=value",
@@ -1082,7 +1082,7 @@ func TestAuthJWTFingerprint(t *testing.T) {
 		JWTClaimKey:        "my_permission_key",
 	}
 
-	user, err2 := m.Authenticate(&Request{
+	user, _, err2 := m.Authenticate(&Request{
 		Action:   conf.AuthActionPublish,
 		Path:     "mypath",
 		Protocol: ProtocolRTSP,
