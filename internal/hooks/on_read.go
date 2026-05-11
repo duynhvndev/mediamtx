@@ -17,6 +17,8 @@ type OnReadParams struct {
 	ExternalCmdEnv  externalcmd.Environment
 	Reader          defs.APIPathReader
 	Query           string
+	User            string
+	JTI             string
 }
 
 // OnRead is the OnRead hook.
@@ -30,6 +32,8 @@ func OnRead(params OnReadParams) func() {
 		env["MTX_QUERY"] = url.QueryEscape(params.Query)
 		env["MTX_READER_TYPE"] = string(desc.Type)
 		env["MTX_READER_ID"] = desc.ID
+		env["MTX_USER"] = params.User
+		env["MTX_JTI"] = params.JTI
 	}
 
 	if params.Conf.RunOnRead != "" {

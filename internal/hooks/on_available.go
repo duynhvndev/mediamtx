@@ -17,6 +17,8 @@ type OnAvailableParams struct {
 	ExternalCmdEnv  externalcmd.Environment
 	Desc            *defs.APIPathSource
 	Query           string
+	User            string
+	JTI             string
 }
 
 // OnAvailable is the OnAvailable hook.
@@ -27,6 +29,8 @@ func OnAvailable(params OnAvailableParams) func() {
 	if params.Conf.RunOnAvailable != "" || params.Conf.RunOnUnavailable != "" {
 		env = params.ExternalCmdEnv
 		env["MTX_QUERY"] = url.QueryEscape(params.Query)
+		env["MTX_USER"] = params.User
+		env["MTX_JTI"] = params.JTI
 		if params.Desc != nil {
 			env["MTX_SOURCE_TYPE"] = string(params.Desc.Type)
 			env["MTX_SOURCE_ID"] = params.Desc.ID
