@@ -23,10 +23,43 @@ import (
 	"github.com/bluenviron/mediamtx/internal/protocols/tls"
 )
 
+var (
+	blockedJTIs   = map[string]struct{}{}
+	blockedJTIsMu sync.RWMutex
+)
+
+func BlockJTI(jti string) {
+	blockedJTIsMu.Lock()
+	blockedJTIs[jti] = struct{}{}
+	blockedJTIsMu.Unlock()
+}
+
+func UnblockJTI(jti string) {
+	blockedJTIsMu.Lock()
+	delete(blockedJTIs, jti)
+	blockedJTIsMu.Unlock()
+}
+
+func isJTIBlocked(jti string) bool {
+	blockedJTIsMu.RLock()
+	_, ok := blockedJTIs[jti]
+	blockedJTIsMu.RUnlock()
+	return ok
+}
+
 const (
 	maxInboundBodySize = 128 * 1024
 	jwksRefreshPeriod  = 60 * 60 * time.Second
 )
+
+func (m *Manager) RevocationBlock(jti string)   { m.Revocation.Block(jti) }
+func (m *Manager) RevocationUnblock(jti string) { m.Revocation.Unblock(jti) }
+func (m *Manager) RevocationList() []string     { return m.Revocation.List() }
+
+func (m *Manager) UserBanBlock(subject string)         { m.UserBan.Block(subject) }
+func (m *Manager) UserBanUnblock(subject string)       { m.UserBan.Unblock(subject) }
+func (m *Manager) UserBanList() []string               { return m.UserBan.List() }
+func (m *Manager) UserBanIsBanned(subject string) bool { return m.UserBan.IsBanned(subject) }
 
 func isHTTP(req *Request) bool {
 	return req.Protocol == ProtocolHLS || req.Protocol == ProtocolWebRTC ||
@@ -108,6 +141,9 @@ type Manager struct {
 	ReadTimeout        time.Duration
 	Parent             logger.Writer
 
+	Revocation *Revocation // <-- ADDED
+	UserBan    *UserBan    // <-- ADDED
+
 	wrapTransport   func(http.RoundTripper) http.RoundTripper
 	mutex           sync.RWMutex
 	jwksLastRefresh time.Time
@@ -129,6 +165,7 @@ func (m *Manager) ReloadInternalUsers(u []conf.AuthInternalUser) {
 }
 
 // Authenticate authenticates a request.
+// The result carries the authenticated user (sub) and, when JWT-based, the token id (jti).
 func (m *Manager) Authenticate(req *Request) (*Result, *Error) {
 	var token string
 	if m.Method == conf.AuthMethodHTTP || m.Method == conf.AuthMethodJWT {
@@ -306,11 +343,21 @@ func (m *Manager) authenticateJWT(req *Request, token string) (*Result, error) {
 		return nil, err
 	}
 
+	// >>> ADDED: deny by jti
+	if m.Revocation != nil && cc.ID != "" && m.Revocation.IsBlocked(cc.ID) {
+		return nil, fmt.Errorf("token revoked (jti=%s)", cc.ID)
+	}
+
+	// >>> ADDED: deny by subject (user ban)
+	if m.UserBan != nil && cc.Subject != "" && m.UserBan.IsBanned(cc.Subject) {
+		return nil, fmt.Errorf("user banned (sub=%s)", cc.Subject)
+	}
+
 	if !matchesPermission(cc.permissions, req) {
 		return nil, fmt.Errorf("user doesn't have permission to perform action")
 	}
 
-	res := &Result{User: cc.Subject}
+	res := &Result{User: cc.Subject, JTI: cc.ID}
 	if cc.ExpiresAt != nil {
 		res.ExpiresAt = &cc.ExpiresAt.Time
 	}
