@@ -20,10 +20,43 @@ import (
 	"github.com/google/uuid"
 )
 
+var (
+	blockedJTIs   = map[string]struct{}{}
+	blockedJTIsMu sync.RWMutex
+)
+
+func BlockJTI(jti string) {
+	blockedJTIsMu.Lock()
+	blockedJTIs[jti] = struct{}{}
+	blockedJTIsMu.Unlock()
+}
+
+func UnblockJTI(jti string) {
+	blockedJTIsMu.Lock()
+	delete(blockedJTIs, jti)
+	blockedJTIsMu.Unlock()
+}
+
+func isJTIBlocked(jti string) bool {
+	blockedJTIsMu.RLock()
+	_, ok := blockedJTIs[jti]
+	blockedJTIsMu.RUnlock()
+	return ok
+}
+
 const (
 	maxInboundBodySize = 128 * 1024
 	jwksRefreshPeriod  = 60 * 60 * time.Second
 )
+
+func (m *Manager) RevocationBlock(jti string) { m.Revocation.Block(jti) }
+func (m *Manager) RevocationUnblock(jti string) { m.Revocation.Unblock(jti) }
+func (m *Manager) RevocationList() []string     { return m.Revocation.List() }
+
+func (m *Manager) UserBanBlock(subject string)   { m.UserBan.Block(subject) }
+func (m *Manager) UserBanUnblock(subject string) { m.UserBan.Unblock(subject) }
+func (m *Manager) UserBanList() []string         { return m.UserBan.List() }
+func (m *Manager) UserBanIsBanned(subject string) bool { return m.UserBan.IsBanned(subject) }
 
 func isHTTP(req *Request) bool {
 	return req.Protocol == ProtocolHLS || req.Protocol == ProtocolWebRTC ||
@@ -104,6 +137,9 @@ type Manager struct {
 	JWTAudience        string
 	ReadTimeout        time.Duration
 
+	Revocation *Revocation // <-- ADDED
+	UserBan    *UserBan    // <-- ADDED
+
 	mutex           sync.RWMutex
 	jwksLastRefresh time.Time
 	jwtKeyFunc      keyfunc.Keyfunc
@@ -117,14 +153,14 @@ func (m *Manager) ReloadInternalUsers(u []conf.AuthInternalUser) {
 }
 
 // Authenticate authenticates a request.
-// It returns the user name.
-func (m *Manager) Authenticate(req *Request) (string, *Error) {
+// It returns the authenticated user (sub) and, when JWT-based, the token id (jti).
+func (m *Manager) Authenticate(req *Request) (string, string, *Error) {
 	var token string
 	if m.Method == conf.AuthMethodHTTP || m.Method == conf.AuthMethodJWT {
 		token = getToken(m.Method == conf.AuthMethodJWT && m.JWTInHTTPQuery != nil && *m.JWTInHTTPQuery, req)
 	}
 
-	var user string
+	var user, jti string
 	var err error
 
 	switch m.Method {
@@ -135,17 +171,17 @@ func (m *Manager) Authenticate(req *Request) (string, *Error) {
 		user, err = m.authenticateHTTP(req, token)
 
 	default:
-		user, err = m.authenticateJWT(req, token)
+		user, jti, err = m.authenticateJWT(req, token)
 	}
 
 	if err != nil {
-		return "", &Error{
+		return "", "", &Error{
 			Wrapped:        err,
 			AskCredentials: (req.Credentials.User == "" && req.Credentials.Pass == "" && token == ""),
 		}
 	}
 
-	return user, nil
+	return user, jti, nil
 }
 
 func (m *Manager) authenticateInternal(req *Request) (string, error) {
@@ -245,18 +281,18 @@ func (m *Manager) authenticateHTTP(req *Request, token string) (string, error) {
 	return req.Credentials.User, nil
 }
 
-func (m *Manager) authenticateJWT(req *Request, token string) (string, error) {
+func (m *Manager) authenticateJWT(req *Request, token string) (string, string, error) {
 	if matchesPermission(m.JWTExclude, req) {
-		return "", nil
+		return "", "", nil
 	}
 
 	keyfunc, err := m.pullJWTJWKS()
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 
 	if token == "" {
-		return "", fmt.Errorf("JWT not provided")
+		return "", "", fmt.Errorf("JWT not provided")
 	}
 
 	var opts []jwt.ParserOption
@@ -271,14 +307,24 @@ func (m *Manager) authenticateJWT(req *Request, token string) (string, error) {
 	cc.permissionsKey = m.JWTClaimKey
 	_, err = jwt.ParseWithClaims(token, &cc, keyfunc, opts...)
 	if err != nil {
-		return "", err
+		return "", "", err
+	}
+
+	// >>> ADDED: deny by jti
+	if m.Revocation != nil && cc.ID != "" && m.Revocation.IsBlocked(cc.ID) {
+		return "", "", fmt.Errorf("token revoked (jti=%s)", cc.ID)
+	}
+
+	// >>> ADDED: deny by subject (user ban)
+	if m.UserBan != nil && cc.Subject != "" && m.UserBan.IsBanned(cc.Subject) {
+		return "", "", fmt.Errorf("user banned (sub=%s)", cc.Subject)
 	}
 
 	if !matchesPermission(cc.permissions, req) {
-		return "", fmt.Errorf("user doesn't have permission to perform action")
+		return "", "", fmt.Errorf("user doesn't have permission to perform action")
 	}
 
-	return cc.Subject, nil
+	return cc.Subject, cc.ID, nil
 }
 
 func (m *Manager) pullJWTJWKS() (jwt.Keyfunc, error) {
