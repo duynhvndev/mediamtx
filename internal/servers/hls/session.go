@@ -55,6 +55,7 @@ type session struct {
 	created         time.Time
 	userMutex       sync.RWMutex
 	user            string
+	jti             string
 	lastRequestTime atomic.Int64
 	bytesSent       atomic.Uint64
 	muxerInstance   *muxerInstance
@@ -146,6 +147,7 @@ func (s *session) runInner() error {
 
 	s.userMutex.Lock()
 	s.user = res.User
+	s.jti = res.JTI
 	s.userMutex.Unlock()
 
 	muxer, err := s.server.getOrCreateMuxer(
@@ -192,6 +194,8 @@ func (s *session) runInner() error {
 		ExternalCmdEnv:  res.Path.ExternalCmdEnv(),
 		Reader:          *s.APIReaderDescribe(),
 		Query:           s.query,
+		User:            s.user,
+		JTI:             s.jti,
 	})
 	defer onUnreadHook()
 
@@ -299,6 +303,7 @@ func (s *session) apiItem() *defs.APIHLSSession {
 		Query:         s.query,
 		User:          user,
 		UserAgent:     s.userAgent,
+		JTI:           s.jti,
 		IsCDN:         s.isCDN,
 		OutboundBytes: outboundBytes,
 	}

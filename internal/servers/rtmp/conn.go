@@ -49,6 +49,7 @@ type conn struct {
 	query     string
 	user      string
 	userAgent string
+	jti       string
 	reader    *stream.Reader
 }
 
@@ -194,6 +195,7 @@ func (c *conn) runRead() error {
 	c.pathName = pathName
 	c.query = c.rconn.URL.RawQuery
 	c.user = res.User
+	c.jti = res.JTI
 	c.mutex.Unlock()
 
 	r := &stream.Reader{Parent: c}
@@ -220,6 +222,8 @@ func (c *conn) runRead() error {
 		ExternalCmdEnv:  res.Path.ExternalCmdEnv(),
 		Reader:          *c.APIReaderDescribe(),
 		Query:           c.rconn.URL.RawQuery,
+		User:            c.user,
+		JTI:             c.jti,
 	})
 	defer onUnreadHook()
 
@@ -327,6 +331,7 @@ func (c *conn) runPublish() error {
 	c.pathName = pathName
 	c.query = c.rconn.URL.RawQuery
 	c.user = res1.User
+	c.jti = res1.JTI
 	c.mutex.Unlock()
 
 	c.nconn.SetWriteDeadline(time.Time{})
@@ -392,6 +397,7 @@ func (c *conn) apiItem() *defs.APIRTMPConn {
 		Query:                   c.query,
 		User:                    c.user,
 		UserAgent:               c.userAgent,
+		JTI:                     c.jti,
 		InboundBytes:            bytesReceived,
 		OutboundBytes:           bytesSent,
 		BytesReceived:           bytesReceived,

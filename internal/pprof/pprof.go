@@ -18,7 +18,7 @@ import (
 )
 
 type pprofAuthManager interface {
-	Authenticate(req *auth.Request) (string, *auth.Error)
+	Authenticate(req *auth.Request) (string, string, *auth.Error)
 }
 
 type pprofParent interface {
@@ -120,7 +120,7 @@ func (pp *PPROF) middlewareAuth(ctx *gin.Context) {
 		EnableAskCredentials: true,
 	}
 
-	_, err := pp.AuthManager.Authenticate(req)
+	_, _, err := pp.AuthManager.Authenticate(req)
 	if err != nil {
 		if err.AskCredentials {
 			ctx.Header("WWW-Authenticate", `Basic realm="mediamtx"`)

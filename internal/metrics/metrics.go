@@ -89,7 +89,7 @@ const (
 )
 
 type metricsAuthManager interface {
-	Authenticate(req *auth.Request) (string, *auth.Error)
+	Authenticate(req *auth.Request) (string, string, *auth.Error)
 }
 
 type metricsParent interface {
@@ -201,7 +201,7 @@ func (m *Metrics) middlewareAuth(ctx *gin.Context) {
 		EnableAskCredentials: true,
 	}
 
-	_, err := m.AuthManager.Authenticate(req)
+	_, _, err := m.AuthManager.Authenticate(req)
 	if err != nil {
 		if err.AskCredentials {
 			ctx.Header("WWW-Authenticate", `Basic realm="mediamtx"`)

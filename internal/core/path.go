@@ -233,7 +233,7 @@ func (pa *path) run() {
 	defer pa.wg.Done()
 
 	if pa.conf.AlwaysAvailable {
-		err := pa.setAvailable(nil, "", nil, true)
+		err := pa.setAvailable(nil, "", nil, true, "", "")
 		if err != nil {
 			panic(err)
 		}
@@ -479,7 +479,7 @@ func (pa *path) doReloadConf(newConf *conf.Path) {
 
 func (pa *path) doSourceStaticSetReady(req defs.PathSourceStaticSetReadyReq) {
 	if !pa.conf.AlwaysAvailable {
-		err := pa.setAvailable(pa.source, "", req.Desc, req.ReplaceNTP)
+		err := pa.setAvailable(pa.source, "", req.Desc, req.ReplaceNTP, "", "")
 		if err != nil {
 			req.Res <- defs.PathSourceStaticSetReadyRes{Err: err}
 			return
@@ -603,7 +603,7 @@ func (pa *path) doAddPublisher(req defs.PathAddPublisherReq) {
 	}
 
 	if !pa.conf.AlwaysAvailable {
-		err := pa.setAvailable(req.Author, req.AccessRequest.Query, req.Desc, req.ReplaceNTP)
+		err := pa.setAvailable(req.Author, req.AccessRequest.Query, req.Desc, req.ReplaceNTP, req.User, req.JTI)
 		if err != nil {
 			req.Res <- defs.PathAddPublisherRes{Err: err}
 			return
@@ -936,6 +936,8 @@ func (pa *path) setAvailable(
 	publisherQuery string,
 	desc *description.Session,
 	replaceNTP bool,
+	publisherUser string,
+	publisherJTI string,
 ) error {
 	pa.stream = &stream.Stream{
 		OrigDesc:              desc,
@@ -966,6 +968,8 @@ func (pa *path) setAvailable(
 		ExternalCmdEnv:  pa.ExternalCmdEnv(),
 		Desc:            sourceDesc,
 		Query:           publisherQuery,
+		User:            publisherUser,
+		JTI:             publisherJTI,
 	})
 
 	if !pa.conf.AlwaysAvailable {
