@@ -76,7 +76,11 @@ type PathAddPublisherReq struct {
 	ReplaceNTP    bool
 	ConfToCompare *conf.Path
 	AccessRequest PathAccessRequest
-	Res           chan PathAddPublisherRes
+	// Filled in by pathManager after authentication, before the request
+	// is forwarded to the path. Used by hooks to expose publisher identity.
+	User string
+	JTI  string
+	Res  chan PathAddPublisherRes
 }
 
 // PathRemovePublisherReq contains arguments of RemovePublisher().

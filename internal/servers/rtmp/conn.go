@@ -51,6 +51,7 @@ type conn struct {
 	user      string
 	expiresAt *time.Time
 	userAgent string
+	jti       string
 	reader    *stream.Reader
 }
 
@@ -215,6 +216,7 @@ func (c *conn) runRead(errGroupCtx context.Context, errGroup *errgroup.Group) er
 	c.query = c.rconn.URL.RawQuery
 	c.user = res.AuthRes.User
 	c.expiresAt = res.AuthRes.ExpiresAt
+	c.jti = res.AuthRes.JTI
 	c.mutex.Unlock()
 
 	r := &stream.Reader{Parent: c}
@@ -241,6 +243,8 @@ func (c *conn) runRead(errGroupCtx context.Context, errGroup *errgroup.Group) er
 		ExternalCmdEnv:  res.Path.ExternalCmdEnv(),
 		Reader:          *c.APIReaderDescribe(),
 		Query:           c.rconn.URL.RawQuery,
+		User:            c.user,
+		JTI:             c.jti,
 	})
 	defer onUnreadHook()
 
@@ -355,6 +359,7 @@ func (c *conn) runPublish(errGroupCtx context.Context, errGroup *errgroup.Group)
 	c.query = c.rconn.URL.RawQuery
 	c.user = res1.AuthRes.User
 	c.expiresAt = res1.AuthRes.ExpiresAt
+	c.jti = res1.AuthRes.JTI
 	c.mutex.Unlock()
 
 	c.nconn.SetWriteDeadline(time.Time{})
@@ -421,6 +426,7 @@ func (c *conn) apiItem() *defs.APIRTMPConn {
 		User:                    c.user,
 		ExpiresAt:               c.expiresAt,
 		UserAgent:               c.userAgent,
+		JTI:                     c.jti,
 		InboundBytes:            bytesReceived,
 		OutboundBytes:           bytesSent,
 		BytesReceived:           bytesReceived,

@@ -34,6 +34,7 @@ type APIHLSSession struct {
 	UserAgent     string     `json:"userAgent"`
 	IsCDN         bool       `json:"isCDN"`
 	OutboundBytes uint64     `json:"outboundBytes"`
+	JTI           string     `json:"jti"`
 }
 
 // APIHLSMuxerList is a list of HLS muxers.

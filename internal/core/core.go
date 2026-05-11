@@ -634,6 +634,8 @@ func (p *Core) createResources(initial bool) error {
 			JWTAudience:        p.conf.AuthJWTAudience,
 			ReadTimeout:        time.Duration(p.conf.ReadTimeout),
 			Parent:             p,
+			Revocation:         auth.NewRevocation(),
+			UserBan:            auth.NewUserBan(),
 		}
 		p.authManager.Initialize()
 	}

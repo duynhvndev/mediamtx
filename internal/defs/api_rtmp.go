@@ -34,6 +34,7 @@ type APIRTMPConn struct {
 	User                    string           `json:"user"`
 	ExpiresAt               *time.Time       `json:"expiresAt"`
 	UserAgent               string           `json:"userAgent"`
+	JTI                     string           `json:"jti"`
 	InboundBytes            uint64           `json:"inboundBytes"`
 	OutboundBytes           uint64           `json:"outboundBytes"`
 	OutboundFramesDiscarded uint64           `json:"outboundFramesDiscarded"`
