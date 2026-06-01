@@ -1,0 +1,42 @@
+logLevel: info
+rtmp: true
+hls: true
+webrtc: false
+rtsp: false
+srt: false
+api: true
+logDestinations: [stdout, file]
+logFile: /mediamtx.log
+rtmpAddress: :1935
+hlsAddress: :8888
+webrtcAddress: :8889
+
+authJWTExclude:
+  - action: publish
+    path: ~([^_].|_[^12])$
+  - action: read
+    path: ~([^_].|_[^12])$
+  - action: playback
+    path: ~([^_].|_[^12])$
+
+  - action: read
+    path: ~_1$
+  - action: playback
+    path: ~_1$
+
+  - action: api
+
+paths:
+  ~^live[0-9a-zA-Z]+/.+$:
+    source: publisher
+    record: yes
+    recordPath: /recordings/%path/%Y-%m-%d_%H-%M-%S-%f
+    recordPartDuration: 10s
+    recordSegmentDuration: 10s
+    recordDeleteAfter: 30d
+    recordFormat: fmp4
+    runOnReady: /bin/sh /scripts/send-kafka.sh STREAM_START "$MTX_PATH" "$MTX_QUERY" "$MTX_USER" "$MTX_JTI" "$MTX_SOURCE_TYPE" "$MTX_SOURCE_ID"
+    runOnNotReady: /bin/sh /scripts/send-kafka.sh "STREAM_STOP" "$MTX_PATH"
+    runOnRecordSegmentComplete: /bin/sh /scripts/warm-up-cdn.sh "$MTX_PATH" "$MTX_SEGMENT_PATH"
+    runOnRead: /bin/sh /scripts/send-kafka.sh STREAM_VIEW_START "$MTX_PATH" "$MTX_QUERY" "$MTX_USER" "$MTX_JTI" "$MTX_READER_TYPE" "$MTX_READER_ID"
+    runOnUnread: /bin/sh /scripts/send-kafka.sh STREAM_VIEW_STOP "$MTX_PATH" "$MTX_USER" "$MTX_JTI" "$MTX_READER_ID"
