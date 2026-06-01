@@ -1,0 +1,39 @@
+# we has the bug with cookie in 1.18.0
+# https://github.com/bluenviron/mediamtx/issues/5700
+
+# using my pactched files instead
+# FROM bluenviron/mediamtx:1.17.1 AS mediamtx-bin
+
+FROM alpine:latest
+
+RUN apk add --no-cache \
+    bash \
+    curl \
+    jq \
+    kcat \
+    ffmpeg \
+    ca-certificates \
+    tzdata
+
+# using my pactched files instead
+# COPY --from=mediamtx-bin /mediamtx /mediamtx
+# COPY --from=mediamtx-bin /mediamtx.yml /mediamtx.yml
+
+COPY mediamtx-linux-amd64 /mediamtx
+COPY mediamtx.yml /mediamtx.yml
+
+RUN mkdir -p /pvc-live/scripts /recordings /pvc-live/logs
+
+RUN chmod 755 /pvc-live/scripts
+
+EXPOSE 1935
+
+EXPOSE 8554 8000/udp 8001/udp
+
+EXPOSE 8888 9997
+
+EXPOSE 8889 8002/udp
+
+EXPOSE 8890/udp
+
+ENTRYPOINT [ "/mediamtx" ]
