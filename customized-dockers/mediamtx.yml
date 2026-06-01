@@ -34,7 +34,7 @@ paths:
     recordPartDuration: 10s
     recordSegmentDuration: 10s
     recordDeleteAfter: 30d
-    recordFormat: fmp4
+    recordFormat: mpegts
     runOnReady: /bin/sh /scripts/send-kafka.sh STREAM_START "$MTX_PATH" "$MTX_QUERY" "$MTX_USER" "$MTX_JTI" "$MTX_SOURCE_TYPE" "$MTX_SOURCE_ID"
     runOnNotReady: /bin/sh /scripts/send-kafka.sh "STREAM_STOP" "$MTX_PATH"
     runOnRecordSegmentComplete: /bin/sh /scripts/warm-up-cdn.sh "$MTX_PATH" "$MTX_SEGMENT_PATH"
