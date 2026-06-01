@@ -10,6 +10,7 @@ logFile: /mediamtx.log
 rtmpAddress: :1935
 hlsAddress: :8888
 webrtcAddress: :8889
+hlsCDNSecret: rXi410Xfd@4DMxwE1gz1BhSI1Ot7aJOI
 
 authJWTExclude:
   - action: publish
