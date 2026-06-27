@@ -28,6 +28,11 @@ var (
 	blockedJTIsMu sync.RWMutex
 )
 
+const (
+	// PauseAfterError is the pause to apply after an authentication failure.
+	PauseAfterError = 2 * time.Second
+)
+
 func BlockJTI(jti string) {
 	blockedJTIsMu.Lock()
 	blockedJTIs[jti] = struct{}{}
