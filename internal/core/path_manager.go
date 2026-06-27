@@ -346,15 +346,11 @@ func (pm *pathManager) doDescribe(req defs.PathDescribeReq) {
 	}
 
 	if !req.AccessRequest.SkipAuth {
-		_, err2 := pm.authManager.Authenticate(req.AccessRequest.ToAuthRequest())
+		_, _, err2 := pm.authManager.Authenticate(req.AccessRequest.ToAuthRequest())
 		if err2 != nil {
 			req.Res <- defs.PathDescribeRes{Err: err2}
 			return
 		}
-	_, _, err2 := pm.authManager.Authenticate(req.AccessRequest.ToAuthRequest())
-	if err2 != nil {
-		req.Res <- defs.PathDescribeRes{Err: err2}
-		return
 	}
 
 	// create path if it doesn't exist

@@ -25,6 +25,11 @@ var (
 	blockedJTIsMu sync.RWMutex
 )
 
+const (
+	// PauseAfterError is the pause to apply after an authentication failure.
+	PauseAfterError = 2 * time.Second
+)
+
 func BlockJTI(jti string) {
 	blockedJTIsMu.Lock()
 	blockedJTIs[jti] = struct{}{}
@@ -49,13 +54,13 @@ const (
 	jwksRefreshPeriod  = 60 * 60 * time.Second
 )
 
-func (m *Manager) RevocationBlock(jti string) { m.Revocation.Block(jti) }
+func (m *Manager) RevocationBlock(jti string)   { m.Revocation.Block(jti) }
 func (m *Manager) RevocationUnblock(jti string) { m.Revocation.Unblock(jti) }
 func (m *Manager) RevocationList() []string     { return m.Revocation.List() }
 
-func (m *Manager) UserBanBlock(subject string)   { m.UserBan.Block(subject) }
-func (m *Manager) UserBanUnblock(subject string) { m.UserBan.Unblock(subject) }
-func (m *Manager) UserBanList() []string         { return m.UserBan.List() }
+func (m *Manager) UserBanBlock(subject string)         { m.UserBan.Block(subject) }
+func (m *Manager) UserBanUnblock(subject string)       { m.UserBan.Unblock(subject) }
+func (m *Manager) UserBanList() []string               { return m.UserBan.List() }
 func (m *Manager) UserBanIsBanned(subject string) bool { return m.UserBan.IsBanned(subject) }
 
 func isHTTP(req *Request) bool {
