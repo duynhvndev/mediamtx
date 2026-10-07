@@ -4,6 +4,9 @@ hls: true
 webrtc: false
 rtsp: false
 srt: false
+# MoQ ships enabled upstream (v1.20+) and would open :8892/:8893 and generate
+# auto.key/auto.crt in the working dir. We only serve RTMP + HLS.
+moq: false
 api: true
 logDestinations: [stdout, file]
 logFile: /mediamtx.log
@@ -12,6 +15,21 @@ hlsAddress: :8888
 webrtcAddress: :8889
 hlsCDNSecret: rXi410Xfd@4DMxwE1gz1BhSI1Ot7aJOI
 
+# authJWTExclude lists the permissions that SKIP JWT auth.
+# Match -> no token needed. No match -> JWT required.
+#
+# The regex ([^_].|_[^12])$ looks at the LAST TWO characters of the path and
+# matches everything EXCEPT paths ending in _1 or _2.
+#   [^_].$    -> second-to-last char is not "_"
+#   _[^12]$   -> "_" followed by something other than 1 or 2
+#
+# Resulting matrix:
+#   path ending _1   -> publish: JWT  | read: free | playback: free
+#   path ending _2   -> publish: JWT  | read: JWT  | playback: JWT
+#   any other path   -> publish: free | read: free | playback: free
+#
+# Note: a path with no _1/_2 suffix can be published by anyone. Drop the
+# "action: publish" entry below if publishing must always require a token.
 authJWTExclude:
   - action: publish
     path: ~([^_].|_[^12])$
@@ -35,9 +53,28 @@ paths:
     recordPartDuration: 10s
     recordSegmentDuration: 10s
     recordDeleteAfter: 30d
+    # mpegts, not fmp4: the iOS Flutter player cannot play fragmented MP4.
     recordFormat: mpegts
-    runOnReady: /bin/sh /scripts/send-kafka.sh STREAM_START "$MTX_PATH" "$MTX_QUERY" "$MTX_USER" "$MTX_JTI" "$MTX_SOURCE_TYPE" "$MTX_SOURCE_ID"
-    runOnNotReady: /bin/sh /scripts/send-kafka.sh "STREAM_STOP" "$MTX_PATH"
+
+    # runOnOnline/runOnOffline fire when a real publisher starts/stops feeding
+    # the path. They replace the deprecated runOnReady/runOnNotReady.
+    #
+    # Upstream split the old "ready" state in two because of alwaysAvailable
+    # mode (an offline placeholder segment loops while nobody is publishing):
+    #   available = readable, possibly only the placeholder -> runOnAvailable
+    #   online    = a real source is feeding it             -> runOnOnline
+    # With alwaysAvailable off (our case) both fire at the same moment, so
+    # runOnOnline keeps the exact STREAM_START/STREAM_STOP timing we had and
+    # stays correct if alwaysAvailable is ever turned on.
+    #
+    # MTX_USER (JWT sub) and MTX_JTI (JWT id) are fork additions, see
+    # internal/hooks/on_online.go.
+    runOnOnline: /bin/sh /scripts/send-kafka.sh STREAM_START "$MTX_PATH" "$MTX_QUERY" "$MTX_USER" "$MTX_JTI" "$MTX_SOURCE_TYPE" "$MTX_SOURCE_ID"
+    runOnOffline: /bin/sh /scripts/send-kafka.sh "STREAM_STOP" "$MTX_PATH"
+
     runOnRecordSegmentComplete: /bin/sh /scripts/warm-up-cdn.sh "$MTX_PATH" "$MTX_SEGMENT_PATH"
+
+    # Viewer tracking. MTX_USER/MTX_JTI identify which token is watching, so a
+    # revoked jti or banned sub can be matched against live sessions.
     runOnRead: /bin/sh /scripts/send-kafka.sh STREAM_VIEW_START "$MTX_PATH" "$MTX_QUERY" "$MTX_USER" "$MTX_JTI" "$MTX_READER_TYPE" "$MTX_READER_ID"
     runOnUnread: /bin/sh /scripts/send-kafka.sh STREAM_VIEW_STOP "$MTX_PATH" "$MTX_USER" "$MTX_JTI" "$MTX_READER_ID"
