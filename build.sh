@@ -13,6 +13,9 @@
 #   ./build.sh v1.2.3 mediamtx-arena
 #   ./build.sh v1.2.3 mediamtx-linux linux amd64
 
+# this is latest version sync from https://github.com/bluenviron/mediamtx/releases
+# ./build.sh v1.21.1-arena mediamtx-linux-amd64 linux amd64
+
 set -eu
 
 VERSION="${1:?usage: ./build.sh <version> [output-binary] [GOOS] [GOARCH]}"
