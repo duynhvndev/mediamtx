@@ -502,7 +502,7 @@ func (pa *path) doSourceStaticSetReady(req defs.PathSourceStaticSetReadyReq) {
 	}
 
 	if pa.conf.AlwaysAvailable {
-		pa.setOnline(pa.source.APISourceDescribe(), "")
+		pa.setOnline(pa.source.APISourceDescribe(), "", "", "")
 	}
 
 	if pa.conf.HasOnDemandStaticSource() {
@@ -631,7 +631,7 @@ func (pa *path) doAddPublisher(req defs.PathAddPublisherReq) {
 		pa.name)
 
 	if pa.conf.AlwaysAvailable {
-		pa.setOnline(req.Author.APISourceDescribe(), req.AccessRequest.Query)
+		pa.setOnline(req.Author.APISourceDescribe(), req.AccessRequest.Query, req.User, req.JTI)
 	}
 
 	if pa.conf.HasOnDemandPublisher() && pa.onDemandPublisherState != pathOnDemandStateInitial {
@@ -897,7 +897,12 @@ func (pa *path) onDemandPublisherStop(reason string) {
 	pa.onDemandPublisherState = pathOnDemandStateInitial
 }
 
-func (pa *path) setOnline(sourceDesc *defs.APIPathSource, publisherQuery string) {
+func (pa *path) setOnline(
+	sourceDesc *defs.APIPathSource,
+	publisherQuery string,
+	publisherUser string,
+	publisherJTI string,
+) {
 	pa.setOffline()
 
 	pa.onOfflineHook = hooks.OnOnline(hooks.OnOnlineParams{
@@ -907,6 +912,8 @@ func (pa *path) setOnline(sourceDesc *defs.APIPathSource, publisherQuery string)
 		ExternalCmdEnv:  pa.ExternalCmdEnv(),
 		Desc:            sourceDesc,
 		Query:           publisherQuery,
+		User:            publisherUser,
+		JTI:             publisherJTI,
 	})
 
 	pa.onlineTime = time.Now()
@@ -973,7 +980,7 @@ func (pa *path) setAvailable(
 	})
 
 	if !pa.conf.AlwaysAvailable {
-		pa.setOnline(sourceDesc, publisherQuery)
+		pa.setOnline(sourceDesc, publisherQuery, publisherUser, publisherJTI)
 	}
 
 	pa.forwardManager.Start(pa.stream)
