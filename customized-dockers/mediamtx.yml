@@ -15,8 +15,32 @@ hlsAddress: :8888
 webrtcAddress: :8889
 hlsCDNSecret: rXi410Xfd@4DMxwE1gz1BhSI1Ot7aJOI
 
-# authJWTExclude lists the permissions that SKIP JWT auth.
-# Match -> no token needed. No match -> JWT required.
+# [ARENA / JAVA] Authentication is delegated to the Java backend.
+# For every new connection/session (RTMP connect, HLS session, API call) that
+# is NOT in authHTTPExclude, mediamtx POSTs
+#   {ip, user, password, token, action, path, protocol, id, query, userAgent}
+# to authHTTPAddress ("token" is the JWT from ?jwt= / ?token= / Bearer header).
+# Java verifies the JWT, rejects revoked jti / banned sub, checks
+# action+path permissions and replies:
+#   2xx {"user": "<sub>", "jti": "<jti>", "expireAt": "<JWT exp, RFC3339>"}  -> allow
+#   401 / 403                                                               -> deny
+# user/jti become MTX_USER/MTX_JTI in the hooks below; expireAt makes mediamtx
+# close the session when the token expires.
+# Revoke/ban of live sessions: Java lists /v3/rtmpconns/list and
+# /v3/hlssessions/list on EVERY replica, matches "jti"/"user" and calls
+# /v3/rtmpconns/kick/{id} or /v3/hlssessions/kick/{id}.
+# Full contract: internal/auth/manager.go, authenticateHTTP().
+#
+# Deploy order: the Java auth endpoint must be live BEFORE this config, or
+# every protected connection gets 401.
+# NOTE: env vars override this file. Remove any MTX_AUTHMETHOD=jwt /
+# MTX_AUTHJWTJWKS from the k8s deployment, and set MTX_AUTHHTTPADDRESS to the
+# real Java URL.
+authMethod: http
+authHTTPAddress: http://CHANGE-ME-java-auth/mediamtx/auth
+
+# authHTTPExclude lists the permissions that SKIP the Java auth call.
+# Match -> no token needed, Java not called. No match -> Java decides.
 #
 # The regex ([^_].|_[^12])$ looks at the LAST TWO characters of the path and
 # matches everything EXCEPT paths ending in _1 or _2.
@@ -24,13 +48,14 @@ hlsCDNSecret: rXi410Xfd@4DMxwE1gz1BhSI1Ot7aJOI
 #   _[^12]$   -> "_" followed by something other than 1 or 2
 #
 # Resulting matrix:
-#   path ending _1   -> publish: JWT  | read: free | playback: free
-#   path ending _2   -> publish: JWT  | read: JWT  | playback: JWT
+#   path ending _1   -> publish: Java  | read: free | playback: free
+#   path ending _2   -> publish: Java  | read: Java  | playback: Java
 #   any other path   -> publish: free | read: free | playback: free
 #
-# Note: a path with no _1/_2 suffix can be published by anyone. Drop the
+# Note: a path with no _1/_2 suffix can be published by anyone, and then
+# MTX_USER/MTX_JTI are empty because Java is never called. Drop the
 # "action: publish" entry below if publishing must always require a token.
-authJWTExclude:
+authHTTPExclude:
   - action: publish
     path: ~([^_].|_[^12])$
   - action: read
@@ -43,7 +68,9 @@ authJWTExclude:
   - action: playback
     path: ~_1$
 
-  - action: api
+  # [ARENA / JAVA] action: api is NOT excluded: every /v3 admin call
+  # (list, kick, config) is sent to Java with action=api. Java must allow it
+  # only for internal service tokens.
 
 paths:
   ~^live[0-9a-zA-Z]+/.+$:
@@ -67,8 +94,8 @@ paths:
     # runOnOnline keeps the exact STREAM_START/STREAM_STOP timing we had and
     # stays correct if alwaysAvailable is ever turned on.
     #
-    # MTX_USER (JWT sub) and MTX_JTI (JWT id) are fork additions, see
-    # internal/hooks/on_online.go.
+    # MTX_USER (JWT sub) and MTX_JTI (JWT id) are fork additions: they are the
+    # "user"/"jti" returned by the Java auth call, see internal/hooks/on_online.go.
     runOnOnline: /bin/sh /scripts/send-kafka.sh STREAM_START "$MTX_PATH" "$MTX_QUERY" "$MTX_USER" "$MTX_JTI" "$MTX_SOURCE_TYPE" "$MTX_SOURCE_ID"
     runOnOffline: /bin/sh /scripts/send-kafka.sh "STREAM_STOP" "$MTX_PATH"
 
