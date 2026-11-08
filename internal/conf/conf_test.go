@@ -591,6 +591,39 @@ func TestConfErrors(t *testing.T) {
 			"'externalAuthenticationURL' must be a HTTP URL",
 		},
 		{
+			"arena: hybrid auth valid",
+			"authMethod: jwt\n" +
+				"authJWTJWKS: https://not-real.com\n" +
+				"authJWTClaimKey: test\n" +
+				"authHTTPAddress: http://java/auth\n" +
+				"authHTTPActions: [publish]",
+			"",
+		},
+		{
+			"arena: hybrid auth requires jwt method",
+			"authMethod: http\n" +
+				"authHTTPAddress: http://java/auth\n" +
+				"authHTTPActions: [publish]",
+			"'authHTTPActions' requires 'authMethod: jwt'",
+		},
+		{
+			"arena: hybrid auth requires http address",
+			"authMethod: jwt\n" +
+				"authJWTJWKS: https://not-real.com\n" +
+				"authJWTClaimKey: test\n" +
+				"authHTTPActions: [publish]",
+			"'authHTTPActions' requires 'authHTTPAddress' to be a HTTP URL",
+		},
+		{
+			"arena: hybrid auth invalid action",
+			"authMethod: jwt\n" +
+				"authJWTJWKS: https://not-real.com\n" +
+				"authJWTClaimKey: test\n" +
+				"authHTTPAddress: http://java/auth\n" +
+				"authHTTPActions: [pubish]",
+			"invalid auth action: 'pubish'",
+		},
+		{
 			"invalid rtsp auth methods",
 			"rtspAuthMethods: []",
 			"at least one 'rtspAuthMethods' must be provided",

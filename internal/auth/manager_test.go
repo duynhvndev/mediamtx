@@ -450,6 +450,72 @@ func TestAuthHTTPExpiration(t *testing.T) {
 	}
 }
 
+// Arena fork: hybrid mode. Actions in HTTPActions go to the HTTP service,
+// the others stay JWT and never reach it.
+func TestAuthHybrid(t *testing.T) {
+	var calls []string
+	httpServ := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var in struct {
+			Action string `json:"action"`
+			Token  string `json:"token"`
+		}
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&in))
+		calls = append(calls, in.Action)
+		if in.Token != "good" {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		_, _ = w.Write([]byte(`{"user":"sub-1","jti":"jti-1"}`))
+	}))
+	defer httpServ.Close()
+
+	m := Manager{
+		Parent:      nilLogger{},
+		Method:      conf.AuthMethodJWT,
+		JWTJWKS:     "http://127.0.0.1:1/jwks", // never reached in this test
+		JWTClaimKey: "test",
+		HTTPAddress: httpServ.URL,
+		HTTPActions: []conf.AuthAction{conf.AuthActionPublish},
+	}
+	m.Initialize()
+
+	newReq := func(action conf.AuthAction, query string) *Request {
+		return &Request{
+			Action:      action,
+			Path:        "live01/k7Qm2xP9aZ4rT8bNq3W2",
+			Query:       query,
+			Protocol:    ProtocolRTMP,
+			Credentials: &Credentials{},
+			IP:          net.ParseIP("127.0.0.1"),
+		}
+	}
+
+	t.Run("publish allowed by HTTP service", func(t *testing.T) {
+		calls = nil
+		res, err := m.Authenticate(newReq(conf.AuthActionPublish, "jwt=good"))
+		require.Nil(t, err)
+		require.Equal(t, "sub-1", res.User)
+		require.Equal(t, "jti-1", res.JTI)
+		require.Equal(t, []string{"publish"}, calls)
+	})
+
+	t.Run("publish denied by HTTP service", func(t *testing.T) {
+		calls = nil
+		res, err := m.Authenticate(newReq(conf.AuthActionPublish, "jwt=bad"))
+		require.Nil(t, res)
+		require.ErrorContains(t, err, "server replied with code 401")
+		require.Equal(t, []string{"publish"}, calls)
+	})
+
+	t.Run("read stays JWT and never calls HTTP service", func(t *testing.T) {
+		calls = nil
+		res, err := m.Authenticate(newReq(conf.AuthActionRead, ""))
+		require.Nil(t, res)
+		require.ErrorContains(t, err, "JWT not provided")
+		require.Empty(t, calls)
+	})
+}
+
 // Arena fork: the Java auth service returns the JWT identity in the body.
 func TestAuthHTTPIdentity(t *testing.T) {
 	for _, ca := range []struct {

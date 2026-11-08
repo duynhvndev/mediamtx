@@ -634,6 +634,7 @@ func (p *Core) createResources(initial bool) error {
 			JWTAudience:        p.conf.AuthJWTAudience,
 			ReadTimeout:        time.Duration(p.conf.ReadTimeout),
 			Parent:             p,
+			HTTPActions:        p.conf.AuthHTTPActions, // [ARENA / JAVA] hybrid auth
 		}
 		p.authManager.Initialize()
 	}
@@ -1082,6 +1083,7 @@ func (p *Core) closeResources(newConf *conf.Conf) error {
 		!reflect.DeepEqual(newConf.AuthJWTInHTTPQuery, p.conf.AuthJWTInHTTPQuery) ||
 		newConf.AuthJWTIssuer != p.conf.AuthJWTIssuer ||
 		newConf.AuthJWTAudience != p.conf.AuthJWTAudience ||
+		!reflect.DeepEqual(newConf.AuthHTTPActions, p.conf.AuthHTTPActions) || // [ARENA / JAVA]
 		newConf.ReadTimeout != p.conf.ReadTimeout
 	if !closeAuthManager && !reflect.DeepEqual(newConf.AuthInternalUsersComputed, p.conf.AuthInternalUsersComputed) {
 		p.authManager.ReloadInternalUsers(newConf.AuthInternalUsersComputed)

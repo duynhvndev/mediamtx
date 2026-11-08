@@ -285,6 +285,10 @@ type Conf struct {
 	AuthJWTAudience           string                       `json:"authJWTAudience"`
 	AuthInternalUsersComputed []AuthInternalUser           `json:"-"` // filled by Validate()
 
+	// [ARENA / JAVA] Actions authorized through authHTTPAddress even when
+	// authMethod is jwt (hybrid mode). Arena: [publish].
+	AuthHTTPActions AuthActions `json:"authHTTPActions"`
+
 	// Control API
 	API               bool       `json:"api"`
 	APIAddress        string     `json:"apiAddress"`
@@ -1079,6 +1083,17 @@ func (conf *Conf) validate(l logger.Writer) error {
 
 		if conf.AuthJWTClaimKey == "" {
 			return fmt.Errorf("'authJWTClaimKey' is empty")
+		}
+	}
+
+	// [ARENA / JAVA] hybrid auth: some actions go to authHTTPAddress, the rest stay JWT.
+	if len(conf.AuthHTTPActions) != 0 {
+		if conf.AuthMethod != AuthMethodJWT {
+			return fmt.Errorf("'authHTTPActions' requires 'authMethod: jwt'")
+		}
+		if !strings.HasPrefix(conf.AuthHTTPAddress, "http://") &&
+			!strings.HasPrefix(conf.AuthHTTPAddress, "https://") {
+			return fmt.Errorf("'authHTTPActions' requires 'authHTTPAddress' to be a HTTP URL")
 		}
 	}
 

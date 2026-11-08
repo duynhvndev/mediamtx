@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -112,6 +113,10 @@ type Manager struct {
 	mutex           sync.RWMutex
 	jwksLastRefresh time.Time
 	jwtKeyFunc      keyfunc.Keyfunc
+
+	// [ARENA / JAVA] hybrid mode, see conf.AuthHTTPActions: with Method jwt,
+	// these actions are authorized by HTTPAddress instead of the JWT.
+	HTTPActions []conf.AuthAction
 }
 
 // Initialize initializes the manager.
@@ -147,7 +152,12 @@ func (m *Manager) Authenticate(req *Request) (*Result, *Error) {
 		res, err = m.authenticateHTTP(req, token)
 
 	default:
-		res, err = m.authenticateJWT(req, token)
+		// [ARENA / JAVA] hybrid: selected actions (publish) go to the Java auth service.
+		if slices.Contains(m.HTTPActions, req.Action) {
+			res, err = m.authenticateHTTP(req, token)
+		} else {
+			res, err = m.authenticateJWT(req, token)
+		}
 	}
 
 	if err != nil {
@@ -205,23 +215,19 @@ func (m *Manager) authenticateHTTP(req *Request, token string) (*Result, error) 
 		return &Result{User: req.Credentials.User}, nil
 	}
 
-	// [ARENA / JAVA] mediamtx POSTs this JSON to authHTTPAddress once per new
-	// connection/session (RTMP connect, HLS session creation, API call), not per
-	// packet or per HLS segment. The Java service must:
-	//   1. Find the JWT and verify it (signature, exp, issuer). Where it is:
-	//      - "token": Bearer header, password, or (RTMP/RTSP only) ?jwt= / ?token=
-	//      - HLS/WebRTC with ?jwt=... in the URL: "token" is EMPTY, the JWT is
-	//        only inside "query" (e.g. "jwt=eyJ..."). Java must parse "query"
-	//        for jwt= / token= when "token" is empty.
-	//   2. Deny (401) if the token's jti is revoked or its sub is banned. This is
-	//      the source of truth for revoke/ban; mediamtx keeps no lists.
-	//   3. Check "action" + "path" against the token's permissions
-	//      (action: publish | read | playback | api | metrics | pprof).
-	//      action=api is the admin API (kick, config): allow internal service
-	//      tokens only.
-	//   4. Reply fast: every connect waits on this call (timeout = readTimeout).
-	//      If Java is down, nobody can publish or watch.
-	// Requests matching authHTTPExclude never reach Java.
+	// [ARENA / JAVA] Arena runs hybrid auth (authMethod: jwt + authHTTPActions:
+	// [publish]): only PUBLISH reaches this call, once per RTMP connect. Reads,
+	// playback and the admin API are verified locally with the JWT (JWKS) and
+	// never reach Java. For publish the Java service must:
+	//   1. Find the JWT ("token"; fall back to jwt= / token= in "query" when
+	//      "token" is empty) and verify it: RS256, iss, aud, exp.
+	//   2. Check the token's publish permission path == "path" (exact string).
+	//   3. Check stream_key ownership: HMAC(sub, nonce, mode) matches (CPU).
+	//   4. Check the livestream is UPCOMING or ONGOING (not ENDED / FAILED).
+	//   5. Reply fast (timeout = readTimeout). If Java is down nobody can
+	//      publish; viewers are not affected.
+	// See livestream-arena/docs/designs/0001-live-auth-hybrid.md.
+	// Requests matching authHTTPExclude never reach Java (keep it empty).
 	enc, _ := json.Marshal(struct {
 		IP        string     `json:"ip"`
 		User      string     `json:"user"`
@@ -282,15 +288,15 @@ func (m *Manager) authenticateHTTP(req *Request, token string) (*Result, error) 
 
 	// [ARENA / JAVA] Response body of the Java auth service (all fields optional):
 	//
-	//   200 {"user": "<JWT sub>", "jti": "<JWT jti>", "expireAt": "<RFC3339, JWT exp>"}
+	//   200 {"user": "<JWT sub>", "jti": "<JWT jti>"}
 	//
-	// - user, jti: identity of the token. Stored on the session, shown as
-	//   "user"/"jti" in /v3/rtmpconns and /v3/hlssessions (Java uses them to find
-	//   sessions to kick on revoke/ban) and passed to hooks as MTX_USER/MTX_JTI
-	//   (Kafka STREAM_START / STREAM_VIEW_START events). Omit them and mediamtx
-	//   falls back to the basic-auth user and an empty jti.
-	// - expireAt: mediamtx closes the session by itself at this time. Java should
-	//   send the JWT exp so a session never outlives its token.
+	// - user, jti: identity of the token. Stored on the connection, shown as
+	//   "user"/"jti" in /v3/rtmpconns (Java uses them to find the publisher to
+	//   kick) and passed to hooks as MTX_USER/MTX_JTI (Kafka STREAM_START).
+	//   Omit them and mediamtx falls back to the basic-auth user and empty jti.
+	// - expireAt (optional): mediamtx closes the connection at this time. Arena
+	//   does NOT send it for publish, so a live is never cut when the token
+	//   expires; Java ends lives by kicking + marking them ENDED.
 	//
 	// A malformed body is ignored and the request is still allowed: Java must
 	// answer with a non-2xx status (401/403) to deny.
