@@ -53,15 +53,6 @@ func paramName(ctx *gin.Context) (string, bool) {
 type apiAuthManager interface {
 	Authenticate(req *auth.Request) (*auth.Result, *auth.Error)
 	RefreshJWTJWKS()
-
-	// revoke specific token by jti
-	RevocationBlock(jti string)   // <-- ADDED
-	RevocationUnblock(jti string) // <-- ADDED
-	RevocationList() []string     // <-- ADDED
-
-	UserBanBlock(subject string)   // <-- ADDED
-	UserBanUnblock(subject string) // <-- ADDED
-	UserBanList() []string         // <-- ADDED
 }
 
 type apiParent interface {
@@ -125,15 +116,6 @@ func (a *API) Initialize() error {
 	group.GET("/info", a.onInfo)
 
 	group.POST("/auth/jwks/refresh", a.onAuthJwksRefresh)
-
-	// >>> ADDED
-	group.POST("/auth/revoke", a.onAuthRevokeAdd)
-	group.DELETE("/auth/revoke/:jti", a.onAuthRevokeDelete)
-	group.GET("/auth/revoke/list", a.onAuthRevokeList)
-
-	group.POST("/auth/user/ban", a.onUserBanAdd)
-	group.DELETE("/auth/user/ban/:subject", a.onUserBanDelete)
-	group.GET("/auth/user/ban/list", a.onUserBanList)
 
 	group.GET("/config/global/get", a.onConfigGlobalGet)
 	group.PATCH("/config/global/patch", a.onConfigGlobalPatch)

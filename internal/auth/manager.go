@@ -23,48 +23,10 @@ import (
 	"github.com/bluenviron/mediamtx/internal/protocols/tls"
 )
 
-var (
-	blockedJTIs   = map[string]struct{}{}
-	blockedJTIsMu sync.RWMutex
-)
-
-const (
-	// PauseAfterError is the pause to apply after an authentication failure.
-	PauseAfterError = 2 * time.Second
-)
-
-func BlockJTI(jti string) {
-	blockedJTIsMu.Lock()
-	blockedJTIs[jti] = struct{}{}
-	blockedJTIsMu.Unlock()
-}
-
-func UnblockJTI(jti string) {
-	blockedJTIsMu.Lock()
-	delete(blockedJTIs, jti)
-	blockedJTIsMu.Unlock()
-}
-
-func isJTIBlocked(jti string) bool {
-	blockedJTIsMu.RLock()
-	_, ok := blockedJTIs[jti]
-	blockedJTIsMu.RUnlock()
-	return ok
-}
-
 const (
 	maxInboundBodySize = 128 * 1024
 	jwksRefreshPeriod  = 60 * 60 * time.Second
 )
-
-func (m *Manager) RevocationBlock(jti string)   { m.Revocation.Block(jti) }
-func (m *Manager) RevocationUnblock(jti string) { m.Revocation.Unblock(jti) }
-func (m *Manager) RevocationList() []string     { return m.Revocation.List() }
-
-func (m *Manager) UserBanBlock(subject string)         { m.UserBan.Block(subject) }
-func (m *Manager) UserBanUnblock(subject string)       { m.UserBan.Unblock(subject) }
-func (m *Manager) UserBanList() []string               { return m.UserBan.List() }
-func (m *Manager) UserBanIsBanned(subject string) bool { return m.UserBan.IsBanned(subject) }
 
 func isHTTP(req *Request) bool {
 	return req.Protocol == ProtocolHLS || req.Protocol == ProtocolWebRTC ||
@@ -145,9 +107,6 @@ type Manager struct {
 	JWTAudience        string
 	ReadTimeout        time.Duration
 	Parent             logger.Writer
-
-	Revocation *Revocation // <-- ADDED
-	UserBan    *UserBan    // <-- ADDED
 
 	wrapTransport   func(http.RoundTripper) http.RoundTripper
 	mutex           sync.RWMutex
@@ -346,16 +305,6 @@ func (m *Manager) authenticateJWT(req *Request, token string) (*Result, error) {
 	_, err = jwt.ParseWithClaims(token, &cc, keyfunc, opts...)
 	if err != nil {
 		return nil, err
-	}
-
-	// >>> ADDED: deny by jti
-	if m.Revocation != nil && cc.ID != "" && m.Revocation.IsBlocked(cc.ID) {
-		return nil, fmt.Errorf("token revoked (jti=%s)", cc.ID)
-	}
-
-	// >>> ADDED: deny by subject (user ban)
-	if m.UserBan != nil && cc.Subject != "" && m.UserBan.IsBanned(cc.Subject) {
-		return nil, fmt.Errorf("user banned (sub=%s)", cc.Subject)
 	}
 
 	if !matchesPermission(cc.permissions, req) {
