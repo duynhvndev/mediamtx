@@ -450,6 +450,45 @@ func TestAuthHTTPExpiration(t *testing.T) {
 	}
 }
 
+// Arena fork: the Java auth service returns the JWT identity in the body.
+func TestAuthHTTPIdentity(t *testing.T) {
+	for _, ca := range []struct {
+		name string
+		body string
+		user string
+		jti  string
+	}{
+		{name: "empty body keeps credentials user", body: ``, user: "somebody"},
+		{name: "no identity keeps credentials user", body: `{}`, user: "somebody"},
+		{name: "user and jti", body: `{"user":"sub-123","jti":"jti-abc"}`, user: "sub-123", jti: "jti-abc"},
+		{name: "jti only", body: `{"jti":"jti-abc"}`, user: "somebody", jti: "jti-abc"},
+		{name: "malformed body", body: `invalid`, user: "somebody"},
+	} {
+		t.Run(ca.name, func(t *testing.T) {
+			httpServ := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				_, _ = w.Write([]byte(ca.body))
+			}))
+			defer httpServ.Close()
+
+			m := Manager{
+				Parent:      nilLogger{},
+				Method:      conf.AuthMethodHTTP,
+				HTTPAddress: httpServ.URL,
+			}
+			m.Initialize()
+
+			res, authErr := m.Authenticate(&Request{
+				Action:      conf.AuthActionRead,
+				Credentials: &Credentials{User: "somebody"},
+				IP:          net.ParseIP("127.0.0.1"),
+			})
+			require.Nil(t, authErr)
+			require.Equal(t, ca.user, res.User)
+			require.Equal(t, ca.jti, res.JTI)
+		})
+	}
+}
+
 func TestAuthHTTPFingerprint(t *testing.T) {
 	httpServ := &http.Server{
 		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

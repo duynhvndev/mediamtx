@@ -23,6 +23,9 @@ type APIHLSSessionList struct {
 }
 
 // APIHLSSession is an HLS session.
+// [ARENA / JAVA] To revoke a token or ban a user, Java lists sessions
+// (GET /v3/rtmpconns/list, /v3/hlssessions/list), matches "jti" or "user"
+// and calls the matching /kick/{id}, on every mediamtx replica.
 type APIHLSSession struct {
 	ID            uuid.UUID  `json:"id"`
 	Created       time.Time  `json:"created"`

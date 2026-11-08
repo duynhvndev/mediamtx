@@ -24,6 +24,9 @@ const (
 )
 
 // APIRTMPConn is a RTMP connection.
+// [ARENA / JAVA] To revoke a token or ban a user, Java lists sessions
+// (GET /v3/rtmpconns/list, /v3/hlssessions/list), matches "jti" or "user"
+// and calls the matching /kick/{id}, on every mediamtx replica.
 type APIRTMPConn struct {
 	ID                      uuid.UUID        `json:"id"`
 	Created                 time.Time        `json:"created"`

@@ -822,7 +822,7 @@ components:
           type: boolean
         jti:
           type: string
-          description: JWT ID (jti claim) of the token used to authenticate this session, when JWT auth is enabled.
+          description: JWT ID (jti claim) of the token used to authenticate this session. With authMethod http it is the "jti" returned by the auth service. Empty when the action is excluded from authentication.
         outboundBytes:
           type: integer
           format: uint64
@@ -1993,7 +1993,7 @@ components:
           format: uint64
         jti:
           type: string
-          description: JWT ID (jti claim) of the token used to authenticate this connection, when JWT auth is enabled.
+          description: JWT ID (jti claim) of the token used to authenticate this connection. With authMethod http it is the "jti" returned by the auth service. Empty when the action is excluded from authentication.
         outboundBytes:
           type: integer
           format: uint64

@@ -205,6 +205,20 @@ func (m *Manager) authenticateHTTP(req *Request, token string) (*Result, error) 
 		return &Result{User: req.Credentials.User}, nil
 	}
 
+	// [ARENA / JAVA] mediamtx POSTs this JSON to authHTTPAddress once per new
+	// connection/session (RTMP connect, HLS session creation, API call), not per
+	// packet or per HLS segment. The Java service must:
+	//   1. Verify "token" (the JWT from ?jwt= / ?token=, Bearer header or
+	//      password): signature, exp, issuer.
+	//   2. Deny (401) if the token's jti is revoked or its sub is banned. This is
+	//      the source of truth for revoke/ban; mediamtx keeps no lists.
+	//   3. Check "action" + "path" against the token's permissions
+	//      (action: publish | read | playback | api | metrics | pprof).
+	//      action=api is the admin API (kick, config): allow internal service
+	//      tokens only.
+	//   4. Reply fast: every connect waits on this call (timeout = readTimeout).
+	//      If Java is down, nobody can publish or watch.
+	// Requests matching authHTTPExclude never reach Java.
 	enc, _ := json.Marshal(struct {
 		IP        string     `json:"ip"`
 		User      string     `json:"user"`
@@ -260,10 +274,28 @@ func (m *Manager) authenticateHTTP(req *Request, token string) (*Result, error) 
 	}
 
 	var expireAt *time.Time
+	user := req.Credentials.User
+	var jti string
 
+	// [ARENA / JAVA] Response body of the Java auth service (all fields optional):
+	//
+	//   200 {"user": "<JWT sub>", "jti": "<JWT jti>", "expireAt": "<RFC3339, JWT exp>"}
+	//
+	// - user, jti: identity of the token. Stored on the session, shown as
+	//   "user"/"jti" in /v3/rtmpconns and /v3/hlssessions (Java uses them to find
+	//   sessions to kick on revoke/ban) and passed to hooks as MTX_USER/MTX_JTI
+	//   (Kafka STREAM_START / STREAM_VIEW_START events). Omit them and mediamtx
+	//   falls back to the basic-auth user and an empty jti.
+	// - expireAt: mediamtx closes the session by itself at this time. Java should
+	//   send the JWT exp so a session never outlives its token.
+	//
+	// A malformed body is ignored and the request is still allowed: Java must
+	// answer with a non-2xx status (401/403) to deny.
 	if len(bytes.TrimSpace(resBody)) != 0 {
 		var out struct {
 			ExpireAt *time.Time `json:"expireAt"`
+			User     string     `json:"user"` // Arena fork
+			JTI      string     `json:"jti"`  // Arena fork
 		}
 
 		err = json.Unmarshal(resBody, &out)
@@ -272,10 +304,14 @@ func (m *Manager) authenticateHTTP(req *Request, token string) (*Result, error) 
 				return nil, fmt.Errorf("HTTP authentication expired")
 			}
 			expireAt = out.ExpireAt
+			if out.User != "" {
+				user = out.User
+			}
+			jti = out.JTI
 		}
 	}
 
-	return &Result{User: req.Credentials.User, ExpiresAt: expireAt}, nil
+	return &Result{User: user, JTI: jti, ExpiresAt: expireAt}, nil
 }
 
 func (m *Manager) authenticateJWT(req *Request, token string) (*Result, error) {

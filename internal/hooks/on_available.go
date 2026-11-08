@@ -17,8 +17,11 @@ type OnAvailableParams struct {
 	ExternalCmdEnv  externalcmd.Environment
 	Desc            *defs.APIPathSource
 	Query           string
-	User            string
-	JTI             string
+	// [ARENA / JAVA] Exposed as MTX_USER / MTX_JTI to the hook scripts
+	// (Kafka events). Values come from the Java auth response "user"/"jti";
+	// empty when the action is in authHTTPExclude (no auth call).
+	User string
+	JTI  string
 }
 
 // OnAvailable is the OnAvailable hook.
