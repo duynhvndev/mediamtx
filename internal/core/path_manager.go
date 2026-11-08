@@ -637,9 +637,12 @@ func (pm *pathManager) AddPublisher(req defs.PathAddPublisherReq) (*defs.PathAdd
 			return nil, res1.Err
 		}
 
-		// propagate authenticated identity to the path so hooks can use it
-		req.User = res1.AuthRes.User
-		req.JTI = res1.AuthRes.JTI
+		// propagate authenticated identity to the path so hooks can use it.
+		// With SkipAuth the caller already authenticated and set User/JTI itself.
+		if !req.AccessRequest.SkipAuth {
+			req.User = res1.AuthRes.User
+			req.JTI = res1.AuthRes.JTI
+		}
 
 		res2, err := res1.Path.(*path).addPublisher(req)
 		if err != nil {

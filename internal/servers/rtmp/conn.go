@@ -344,6 +344,11 @@ func (c *conn) runPublish(errGroupCtx context.Context, errGroup *errgroup.Group)
 			Publish:  true,
 			SkipAuth: true,
 		},
+		// [ARENA / JAVA] auth already ran in FindPathConf above (SkipAuth), so
+		// forward the identity returned by Java to the runOnOnline hook
+		// (MTX_USER / MTX_JTI of STREAM_START).
+		User: res1.AuthRes.User,
+		JTI:  res1.AuthRes.JTI,
 	})
 	if err != nil {
 		return err
