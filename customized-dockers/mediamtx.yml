@@ -19,7 +19,11 @@ hlsCDNSecret: rXi410Xfd@4DMxwE1gz1BhSI1Ot7aJOI
 # For every new connection/session (RTMP connect, HLS session, API call) that
 # is NOT in authHTTPExclude, mediamtx POSTs
 #   {ip, user, password, token, action, path, protocol, id, query, userAgent}
-# to authHTTPAddress ("token" is the JWT from ?jwt= / ?token= / Bearer header).
+# to authHTTPAddress. Where the JWT is:
+#   RTMP ?jwt=...              -> "token"
+#   HLS ?jwt=... (iOS player)  -> "token" is EMPTY, JWT only in "query" ("jwt=eyJ...")
+#   Bearer header              -> "token"
+# so Java must fall back to parsing "query" when "token" is empty.
 # Java verifies the JWT, rejects revoked jti / banned sub, checks
 # action+path permissions and replies:
 #   2xx {"user": "<sub>", "jti": "<jti>", "expireAt": "<JWT exp, RFC3339>"}  -> allow

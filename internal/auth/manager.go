@@ -208,8 +208,11 @@ func (m *Manager) authenticateHTTP(req *Request, token string) (*Result, error) 
 	// [ARENA / JAVA] mediamtx POSTs this JSON to authHTTPAddress once per new
 	// connection/session (RTMP connect, HLS session creation, API call), not per
 	// packet or per HLS segment. The Java service must:
-	//   1. Verify "token" (the JWT from ?jwt= / ?token=, Bearer header or
-	//      password): signature, exp, issuer.
+	//   1. Find the JWT and verify it (signature, exp, issuer). Where it is:
+	//      - "token": Bearer header, password, or (RTMP/RTSP only) ?jwt= / ?token=
+	//      - HLS/WebRTC with ?jwt=... in the URL: "token" is EMPTY, the JWT is
+	//        only inside "query" (e.g. "jwt=eyJ..."). Java must parse "query"
+	//        for jwt= / token= when "token" is empty.
 	//   2. Deny (401) if the token's jti is revoked or its sub is banned. This is
 	//      the source of truth for revoke/ban; mediamtx keeps no lists.
 	//   3. Check "action" + "path" against the token's permissions
