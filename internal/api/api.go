@@ -383,7 +383,7 @@ func (a *API) middlewareAuth(ctx *gin.Context) {
 		EnableAskCredentials: true,
 	}
 
-	_, _, err := a.AuthManager.Authenticate(req)
+	_, err := a.AuthManager.Authenticate(req)
 	if err != nil {
 		if err.AskCredentials {
 			ctx.Header("WWW-Authenticate", `Basic realm="mediamtx"`)
