@@ -22,7 +22,7 @@ RUN apk add --no-cache \
 COPY mediamtx-linux-amd64 /mediamtx
 COPY mediamtx.yml /mediamtx.yml
 
-RUN mkdir -p /pvc-live/scripts /recordings /pvc-live/logs
+RUN mkdir -p /pvc-live/scripts /recordings /pvc-live/logs /pvc/live/logs /pvc/live/recordings
 
 RUN chmod 755 /pvc-live/scripts
 
@@ -36,4 +36,7 @@ EXPOSE 8889 8002/udp
 
 EXPOSE 8890/udp
 
-ENTRYPOINT [ "/mediamtx" ]
+# /pvc/live is one PVC shared by all pods: the entrypoint derives the server id
+# from HOSTNAME and logs to /pvc/live/logs/<server>/ (see arena-entrypoint.sh).
+COPY arena-entrypoint.sh /arena-entrypoint.sh
+ENTRYPOINT [ "/arena-entrypoint.sh" ]

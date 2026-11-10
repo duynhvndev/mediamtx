@@ -1,0 +1,108 @@
+# mediamtx config for the forked mediamtx, design 0002 (ABR via ffmpeg, viewers
+# through go-rest origin :8754) + 0003 (record archive by go-rest).
+# Design: livestream-arena/docs/designs/0002-live-system.md §5.3,
+#         livestream-arena/docs/designs/0003-live-recording-archive.md §6.3
+# Reference / tested shape: livestream-arena/e2e/mediamtx/mediamtx.yml
+#
+# Differences from mediamtx.yml (0001):
+#   - hls: false (D5): viewers never read mediamtx, only go-rest :8754 does.
+#   - authJWTExclude: [] (D12): no free read/playback, even for mode 1. Only the
+#     ABR worker reads, with the read_token Java returns from abr-profile.
+#   - runOnAvailable abr.sh (D4) builds the ABR ladder into /dev/shm/abr.
+#   - runOnRead/runOnUnread removed (D10): viewers are counted over WebSocket.
+#   - Path regex allows '-' in the server id (live-<region>-NN, Q10).
+#   - recordDeleteAfter 32d = RECORD_RETENTION (30d) + 2d (0003 §6.3).
+#   - runOnRecordSegmentComplete (warm-up-cdn.sh) disabled: records are no
+#     longer served from the pod (0003 D7).
+#   - authHTTPAddress carries ?internal_token= (D13): authHTTPAddress cannot
+#     send headers.
+#   - One RWX PVC shared by every pod, mounted at /pvc/live in mediamtx and
+#     go-rest, so any go-rest (called through the Service) can act on any live:
+#     logs in /pvc/live/logs/<server>/ (mediamtx.log, go-rest.log,
+#     send-kafka.log), records in /pvc/live/recordings/<server>/<key>/ (go-rest
+#     RecordingsRoot). logFile below is only a fallback: arena-entrypoint.sh
+#     sets MTX_LOGFILE=/pvc/live/logs/<server>/mediamtx.log and creates the dir.
+#
+# Pod requirements (not in this file):
+#   - Image has ffmpeg (libx264, libwebp), /scripts/abr.sh, /scripts/send-kafka.sh
+#     (curl to go-rest 127.0.0.1:8753/events, no kcat).
+#   - Env for abr.sh: INTERNAL_TOKEN, Java URL, ... (see e2e/mediamtx/abr.sh).
+#   - /dev/shm/abr shared with the go-rest container.
+#   - :1935 public; :9997 cluster only; never expose go-rest :8753.
+#
+# NOTE: env vars override this file (MTX_AUTHJWTJWKS, MTX_AUTHHTTPADDRESS, ...).
+
+logLevel: info
+logDestinations: [stdout, file]
+logFile: /pvc/live/logs/mediamtx.log  # overridden by MTX_LOGFILE (entrypoint)
+
+rtmp: true
+rtmpAddress: :1935
+hls: false
+webrtc: false
+rtsp: false
+srt: false
+# MoQ ships enabled upstream (v1.20+) and would open :8892/:8893.
+moq: false
+api: true
+apiAddress: :9997
+
+# Kept on request. Has no effect while hls: false (it only applies to the HLS
+# server). If HLS is ever re-enabled, anyone holding this value bypasses every
+# viewer check: rotate it and load it from env (MTX_HLSCDNSECRET), not git.
+hlsCDNSecret: rXi410Xfd@4DMxwE1gz1BhSI1Ot7aJOI
+
+# [ARENA / JAVA] Hybrid authentication (fork option authHTTPActions).
+#   publish -> HTTP call to Java (authHTTPAddress), before the stream goes live.
+#              Java checks JWT, path, stream_key HMAC owner, server, live not
+#              ENDED; replies 200 {"user","jti"} or 401.
+#   read    -> JWT verified locally with the JWKS. Only the ABR read_token
+#              (sub abr:<server>, exact path) is issued for this.
+#   api     -> JWT with an "api" permission, signed by Java for itself.
+authMethod: jwt
+authJWTJWKS: http://CHANGE-ME-java/internal/authorization/jwks.json
+authJWTClaimKey: arena_livestream_permissions
+authJWTIssuer: livestream-service
+authJWTAudience: mediamtx-servers
+# abr.sh reads rtmp://127.0.0.1/<path>?jwt=<read_token>.
+authJWTInHTTPQuery: true
+
+authHTTPActions: [publish]
+# Set the real token per environment (Java livestream.mediamtx.internal-tokens);
+# never the built-in default in MediamtxProperties.DEFAULT_INTERNAL_TOKEN.
+authHTTPAddress: http://CHANGE-ME-java/internal/mediamtx/auth?internal_token=CHANGE-ME
+authHTTPExclude: []
+
+# D12: nothing skips the JWT check.
+authJWTExclude: []
+
+paths:
+  # Only well-formed paths <live-region-NN>/<stream_key> get a config.
+  ~^live[0-9a-zA-Z-]+/[0-9A-Za-z]{19}[1-9]$:
+    source: publisher
+    record: yes
+    # Must stay <go-rest RecordingsRoot>/%path/...: go-rest archive worker and
+    # janitor read <RecordingsRoot>/<server>/<key>/.
+    recordPath: /pvc/live/recordings/%path/%Y-%m-%d_%H-%M-%S-%f
+    recordPartDuration: 10s
+    recordSegmentDuration: 10s
+    # RECORD_RETENTION (go-rest, 30d) + 2d: last safety net, go-rest janitor
+    # deletes first (0003 §6.3).
+    recordDeleteAfter: 32d
+    # mpegts, not fmp4: the iOS Flutter player cannot play fragmented MP4.
+    recordFormat: mpegts
+
+    # With alwaysAvailable off, runOnOnline and runOnAvailable fire together.
+    # runOnOnline -> STREAM_START/STOP events (go-rest /events -> Kafka, F8).
+    # MTX_USER / MTX_JTI are fork additions (internal/hooks/on_online.go).
+    runOnOnline: /bin/sh /scripts/send-kafka.sh STREAM_START "$MTX_PATH" "$MTX_QUERY" "$MTX_USER" "$MTX_JTI" "$MTX_SOURCE_TYPE" "$MTX_SOURCE_ID"
+    runOnOffline: /bin/sh /scripts/send-kafka.sh STREAM_STOP "$MTX_PATH"
+
+    # runOnAvailable -> ABR worker (F3). abr.sh ends with exec ffmpeg so the
+    # stop signal reaches ffmpeg; restart on crash keeps the HLS timeline via
+    # RUN_ID + go-rest stitcher (§5.4).
+    runOnAvailable: /bin/sh /scripts/abr.sh "$MTX_PATH"
+    runOnAvailableRestart: yes
+
+    # Disabled (0003 D7): records go to Arena storage, not served from the pod.
+    # runOnRecordSegmentComplete: /bin/sh /scripts/warm-up-cdn.sh "$MTX_PATH" "$MTX_SEGMENT_PATH"
