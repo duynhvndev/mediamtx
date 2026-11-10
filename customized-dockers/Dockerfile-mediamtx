@@ -20,7 +20,7 @@ RUN apk add --no-cache \
 # COPY --from=mediamtx-bin /mediamtx.yml /mediamtx.yml
 
 COPY mediamtx-linux-amd64 /mediamtx
-COPY mediamtx.yml /mediamtx.yml
+COPY mediamtx-0002.yml /mediamtx.yml
 
 RUN mkdir -p /pvc-live/scripts /recordings /pvc-live/logs /pvc/live/logs /pvc/live/recordings
 
