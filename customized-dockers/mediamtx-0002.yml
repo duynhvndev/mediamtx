@@ -24,7 +24,8 @@
 #     sets MTX_LOGFILE=/pvc/live/logs/<server>/mediamtx.log and creates the dir.
 #
 # Pod requirements (not in this file):
-#   - Image has ffmpeg (libx264, libwebp), /scripts/abr.sh, /scripts/send-kafka.sh
+#   - Image has ffmpeg (libx264, libwebp). abr.sh, send-kafka.sh are read from
+#     /pvc/live/scripts (PVC subPath scripts; edit from the management pod, no rebuild)
 #     (curl to go-rest 127.0.0.1:8753/events, no kcat).
 #   - Env for abr.sh: INTERNAL_TOKEN, Java URL, ... (see e2e/mediamtx/abr.sh).
 #   - /dev/shm/abr shared with the go-rest container.
@@ -95,14 +96,14 @@ paths:
     # With alwaysAvailable off, runOnOnline and runOnAvailable fire together.
     # runOnOnline -> STREAM_START/STOP events (go-rest /events -> Kafka, F8).
     # MTX_USER / MTX_JTI are fork additions (internal/hooks/on_online.go).
-    runOnOnline: /bin/sh /scripts/send-kafka.sh STREAM_START "$MTX_PATH" "$MTX_QUERY" "$MTX_USER" "$MTX_JTI" "$MTX_SOURCE_TYPE" "$MTX_SOURCE_ID"
-    runOnOffline: /bin/sh /scripts/send-kafka.sh STREAM_STOP "$MTX_PATH"
+    runOnOnline: /bin/sh /pvc/live/scripts/send-kafka.sh STREAM_START "$MTX_PATH" "$MTX_QUERY" "$MTX_USER" "$MTX_JTI" "$MTX_SOURCE_TYPE" "$MTX_SOURCE_ID"
+    runOnOffline: /bin/sh /pvc/live/scripts/send-kafka.sh STREAM_STOP "$MTX_PATH"
 
     # runOnAvailable -> ABR worker (F3). abr.sh ends with exec ffmpeg so the
     # stop signal reaches ffmpeg; restart on crash keeps the HLS timeline via
     # RUN_ID + go-rest stitcher (§5.4).
-    runOnAvailable: /bin/sh /scripts/abr.sh "$MTX_PATH"
+    runOnAvailable: /bin/sh /pvc/live/scripts/abr.sh "$MTX_PATH"
     runOnAvailableRestart: yes
 
     # Disabled (0003 D7): records go to Arena storage, not served from the pod.
-    # runOnRecordSegmentComplete: /bin/sh /scripts/warm-up-cdn.sh "$MTX_PATH" "$MTX_SEGMENT_PATH"
+    # runOnRecordSegmentComplete: /bin/sh /pvc/live/scripts/warm-up-cdn.sh "$MTX_PATH" "$MTX_SEGMENT_PATH"
