@@ -33,6 +33,8 @@ type APISRTConn struct {
 	Query      string          `json:"query"`
 	User       string          `json:"user"`
 	ExpiresAt  *time.Time      `json:"expiresAt"`
+	// [ARENA / JAVA] jti of the Java auth response (publish), as in APIRTMPConn.
+	JTI string `json:"jti"`
 
 	// The metric names/comments are pulled from GoSRT
 

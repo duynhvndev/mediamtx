@@ -999,6 +999,7 @@ func TestAPIProtocolListGet(t *testing.T) {
 							"bytesSentUnique":               float64(0),
 							"created":                       out1.(map[string]any)["items"].([]any)[0].(map[string]any)["created"],
 							"id":                            out1.(map[string]any)["items"].([]any)[0].(map[string]any)["id"],
+							"jti":                           "",
 							"mbpsLinkCapacity":              float64(0),
 							"mbpsMaxBW":                     float64(-1),
 							"mbpsReceiveRate":               float64(0),

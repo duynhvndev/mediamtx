@@ -24,6 +24,8 @@ type PathAccessRequest struct {
 	IP                   net.IP
 	CustomVerifyFunc     func(expectedUser string, expectedPass string) bool
 	EnableAskCredentials bool
+	// [ARENA / JAVA] see auth.Request.Encrypted.
+	Encrypted bool
 }
 
 // ToAuthRequest converts a path access request into an authentication request.
@@ -44,5 +46,6 @@ func (r *PathAccessRequest) ToAuthRequest() *auth.Request {
 		IP:                   r.IP,
 		CustomVerifyFunc:     r.CustomVerifyFunc,
 		EnableAskCredentials: r.EnableAskCredentials,
+		Encrypted:            r.Encrypted,
 	}
 }

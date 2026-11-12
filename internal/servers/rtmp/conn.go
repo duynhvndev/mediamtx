@@ -173,6 +173,7 @@ func (c *conn) runRead(errGroupCtx context.Context, errGroup *errgroup.Group) er
 			UserAgent: c.userAgent,
 			Proto:     auth.ProtocolRTMP,
 			ID:        &c.uuid,
+			Encrypted: c.encryption,
 			Credentials: &auth.Credentials{
 				User: query.Get("user"),
 				Pass: query.Get("pass"),
@@ -282,6 +283,7 @@ func (c *conn) runPublish(errGroupCtx context.Context, errGroup *errgroup.Group)
 			UserAgent: c.userAgent,
 			Proto:     auth.ProtocolRTMP,
 			ID:        &c.uuid,
+			Encrypted: c.encryption,
 			Credentials: &auth.Credentials{
 				User: query.Get("user"),
 				Pass: query.Get("pass"),

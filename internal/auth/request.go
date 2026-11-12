@@ -23,14 +23,18 @@ const (
 
 // Request is an authentication request.
 type Request struct {
-	Action               conf.AuthAction
-	Path                 string // only for ActionPublish, ActionRead, ActionPlayback
-	Query                string
-	Protocol             Protocol   // only for ActionPublish, ActionRead
-	ID                   *uuid.UUID // only for ActionPublish, ActionRead
-	UserAgent            string
-	Credentials          *Credentials
-	IP                   net.IP
+	Action      conf.AuthAction
+	Path        string // only for ActionPublish, ActionRead, ActionPlayback
+	Query       string
+	Protocol    Protocol   // only for ActionPublish, ActionRead
+	ID          *uuid.UUID // only for ActionPublish, ActionRead
+	UserAgent   string
+	Credentials *Credentials
+	IP          net.IP
+	// [ARENA / JAVA] Transport is encrypted: RTMP on the RTMPS listener, SRT with a
+	// passphrase. Sent to the Java auth service as "encrypted" so it can tell
+	// rtmp / rtmps / srt / srts apart (design 0008).
+	Encrypted            bool
 	CustomVerifyFunc     func(expectedUser string, expectedPass string) bool
 	EnableAskCredentials bool
 }

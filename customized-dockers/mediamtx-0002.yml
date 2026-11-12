@@ -29,7 +29,11 @@
 #     (curl to go-rest 127.0.0.1:8753/events, no kcat).
 #   - Env for abr.sh: INTERNAL_TOKEN, Java URL, ... (see e2e/mediamtx/abr.sh).
 #   - /dev/shm/abr shared with the go-rest container.
-#   - :1935 public; :9997 cluster only; never expose go-rest :8753.
+#   - Ingest (design 0008): :1935 RTMP, :1936 RTMPS, :8890/udp SRT (srt + srts) are
+#     public; Java decides per server which of rtmp / rtmps / srt / srts a
+#     publisher may use. :9997 cluster only; never expose go-rest :8753.
+#   - RTMPS certificate mounted as a directory at /certs (Secret, not subPath, so a
+#     renewed certificate is reloaded without a restart).
 #
 # NOTE: env vars override this file (MTX_AUTHJWTJWKS, MTX_AUTHHTTPADDRESS, ...).
 
@@ -42,10 +46,20 @@ readTimeout: 30s
 
 rtmp: true
 rtmpAddress: :1935
+# Design 0008: RTMPS on :1936 next to plain RTMP on :1935 (Egress in the cluster
+# and the abr.sh loopback read keep using :1935). "strict" would close :1935.
+rtmpEncryption: optional
+rtmpsAddress: :1936
+rtmpServerKey: /certs/tls.key
+rtmpServerCert: /certs/tls.crt
 hls: false
 webrtc: false
 rtsp: false
-srt: false
+# Design 0008: SRT publish, plain (srt) or encrypted (srts) on the same port. The
+# stream ID is publish:<server>/<key>:arena:<ticket>; the Java auth service returns
+# the passphrase of an srts session (no srtPublishPassphrase in the path).
+srt: true
+srtAddress: :8890
 # MoQ ships enabled upstream (v1.20+) and would open :8892/:8893.
 moq: false
 api: true
@@ -57,9 +71,11 @@ apiAddress: :9997
 hlsCDNSecret: rXi410Xfd@4DMxwE1gz1BhSI1Ot7aJOI
 
 # [ARENA / JAVA] Hybrid authentication (fork option authHTTPActions).
-#   publish -> HTTP call to Java (authHTTPAddress), before the stream goes live.
-#              Java checks JWT, path, stream_key HMAC owner, server, live not
-#              ENDED; replies 200 {"user","jti"} or 401.
+#   publish -> HTTP call to Java (authHTTPAddress), before the stream goes live,
+#              for RTMP, RTMPS and SRT. Java checks the ingest type allowed on
+#              the server, the publish ticket (?token= / SRT stream ID password),
+#              path, stream_key HMAC owner, server, live not ENDED, latest
+#              session; replies 200 {"user","jti","srt_passphrase"?} or 401.
 #   read    -> JWT verified locally with the JWKS. Only the ABR read_token
 #              (sub abr:<server>, exact path) is issued for this.
 #   api     -> JWT with an "api" permission, signed by Java for itself.
@@ -68,7 +84,7 @@ authJWTJWKS: http://CHANGE-ME-java/internal/authorization/jwks.json
 authJWTClaimKey: arena_livestream_permissions
 authJWTIssuer: livestream-service
 authJWTAudience: mediamtx-servers
-# abr.sh reads rtmp://127.0.0.1/<path>?jwt=<read_token>.
+# abr.sh reads rtmp://127.0.0.1/<path>?token=<read_token>.
 authJWTInHTTPQuery: true
 
 authHTTPActions: [publish]

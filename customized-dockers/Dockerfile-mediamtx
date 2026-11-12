@@ -36,6 +36,9 @@ EXPOSE 8889 8002/udp
 
 EXPOSE 8890/udp
 
+# RTMPS (design 0008)
+EXPOSE 1936
+
 # /pvc/live is one PVC shared by all pods: the entrypoint derives the server id
 # from HOSTNAME and logs to /pvc/live/logs/<server>/ (see arena-entrypoint.sh).
 COPY arena-entrypoint.sh /arena-entrypoint.sh

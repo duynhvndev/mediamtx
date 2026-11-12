@@ -67,6 +67,7 @@ type conn struct {
 	pathName  string
 	query     string
 	user      string
+	jti       string
 	expiresAt *time.Time
 	sconn     srt.Conn
 	reader    *stream.Reader
@@ -171,6 +172,7 @@ func (c *conn) runPublish(errGroupCtx context.Context, errGroup *errgroup.Group,
 			},
 			IP:                   c.ip(),
 			EnableAskCredentials: false,
+			Encrypted:            c.connReq.IsEncrypted(),
 		},
 	})
 	if err != nil {
@@ -196,10 +198,23 @@ func (c *conn) runPublish(errGroupCtx context.Context, errGroup *errgroup.Group,
 
 	c.mutex.Lock()
 	c.user = res1.AuthRes.User
+	c.jti = res1.AuthRes.JTI
 	c.expiresAt = res1.AuthRes.ExpiresAt
 	c.mutex.Unlock()
 
-	err = srtCheckPassphrase(c.connReq, res1.Conf.SRTPublishPassphrase)
+	// [ARENA / JAVA] design 0008: the Java auth service decides srt vs srts and
+	// returns a passphrase per publish session for srts. An encrypted request
+	// without one is refused here, instead of failing later in the handshake.
+	passphrase := res1.AuthRes.SRTPassphrase
+	if passphrase == "" {
+		passphrase = res1.Conf.SRTPublishPassphrase
+	}
+	if passphrase == "" && c.connReq.IsEncrypted() {
+		c.connReq.Reject(srt.REJ_PEER)
+		return fmt.Errorf("encrypted publish not allowed")
+	}
+
+	err = srtCheckPassphrase(c.connReq, passphrase)
 	if err != nil {
 		c.connReq.Reject(srt.REJ_PEER)
 		return err
@@ -259,6 +274,11 @@ func (c *conn) runPublish(errGroupCtx context.Context, errGroup *errgroup.Group,
 			Publish:  true,
 			SkipAuth: true,
 		},
+		// [ARENA / JAVA] auth already ran in FindPathConf above (SkipAuth), so
+		// forward the identity returned by Java to the runOnOnline hook
+		// (MTX_USER / MTX_JTI of STREAM_START), as the RTMP server does.
+		User: res1.AuthRes.User,
+		JTI:  res1.AuthRes.JTI,
 	})
 	if err != nil {
 		return err
@@ -297,6 +317,7 @@ func (c *conn) runRead(errGroupCtx context.Context, errGroup *errgroup.Group, st
 			},
 			IP:                   c.ip(),
 			EnableAskCredentials: false,
+			Encrypted:            c.connReq.IsEncrypted(),
 		},
 	})
 	if err != nil {
@@ -417,6 +438,7 @@ func (c *conn) apiItem() *defs.APISRTConn {
 		Query:      c.query,
 		User:       c.user,
 		ExpiresAt:  c.expiresAt,
+		JTI:        c.jti,
 	}
 
 	if c.sconn != nil {

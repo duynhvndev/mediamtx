@@ -1393,3 +1393,47 @@ func TestAuthJWTFingerprint(t *testing.T) {
 	require.Nil(t, err2)
 	require.Equal(t, "somebody", user.User)
 }
+
+// Arena fork (design 0008): the transport encryption reaches the Java auth
+// service as "encrypted", and its "srt_passphrase" is returned in the result.
+func TestAuthHTTPEncryptedAndSRTPassphrase(t *testing.T) {
+	for _, ca := range []struct {
+		name       string
+		encrypted  bool
+		body       string
+		passphrase string
+	}{
+		{name: "srts", encrypted: true,
+			body: `{"user":"sub","jti":"jti","srt_passphrase":"0123456789abcdef"}`, passphrase: "0123456789abcdef"},
+		{name: "plain", encrypted: false, body: `{"user":"sub","jti":"jti"}`},
+	} {
+		t.Run(ca.name, func(t *testing.T) {
+			var got map[string]any
+			httpServ := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				require.NoError(t, json.NewDecoder(r.Body).Decode(&got))
+				_, _ = w.Write([]byte(ca.body))
+			}))
+			defer httpServ.Close()
+
+			m := Manager{
+				Parent:      nilLogger{},
+				Method:      conf.AuthMethodHTTP,
+				HTTPAddress: httpServ.URL,
+			}
+			m.Initialize()
+
+			res, authErr := m.Authenticate(&Request{
+				Action:      conf.AuthActionPublish,
+				Path:        "live-au-01/key",
+				Protocol:    ProtocolSRT,
+				Credentials: &Credentials{User: "arena", Pass: "ticket"},
+				IP:          net.ParseIP("127.0.0.1"),
+				Encrypted:   ca.encrypted,
+			})
+			require.Nil(t, authErr)
+			require.Equal(t, ca.encrypted, got["encrypted"])
+			require.Equal(t, "ticket", got["token"])
+			require.Equal(t, ca.passphrase, res.SRTPassphrase)
+		})
+	}
+}

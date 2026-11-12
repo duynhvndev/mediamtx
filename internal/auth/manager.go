@@ -216,17 +216,19 @@ func (m *Manager) authenticateHTTP(req *Request, token string) (*Result, error) 
 	}
 
 	// [ARENA / JAVA] Arena runs hybrid auth (authMethod: jwt + authHTTPActions:
-	// [publish]): only PUBLISH reaches this call, once per RTMP connect. Reads,
-	// playback and the admin API are verified locally with the JWT (JWKS) and
-	// never reach Java. For publish the Java service must:
-	//   1. Find the JWT ("token"; fall back to jwt= / token= in "query" when
-	//      "token" is empty) and verify it: RS256, iss, aud, exp.
-	//   2. Check the token's publish permission path == "path" (exact string).
-	//   3. Check stream_key ownership: HMAC(sub, nonce, mode) matches (CPU).
-	//   4. Check the livestream is UPCOMING or ONGOING (not ENDED / FAILED).
-	//   5. Reply fast (timeout = readTimeout). If Java is down nobody can
+	// [publish]): only PUBLISH reaches this call, once per publish connection
+	// (RTMP, RTMPS, SRT). Reads, playback and the admin API are verified locally
+	// with the JWT (JWKS) and never reach Java. For publish the Java service:
+	//   1. Maps protocol + "encrypted" to rtmp / rtmps / srt / srts and checks it
+	//      is allowed on this server.
+	//   2. Verifies the publish ticket in "token" (RTMP: ?token= of the URL,
+	//      SRT: password of the stream ID): HMAC bound to "path", not expired.
+	//   3. Checks stream_key ownership: HMAC(sub, nonce, mode) matches (CPU).
+	//   4. Checks the livestream is UPCOMING or ONGOING (not ENDED / FAILED) and
+	//      the ticket's session is the latest join (or the live's Egress).
+	//   5. Replies fast (timeout = readTimeout). If Java is down nobody can
 	//      publish; viewers are not affected.
-	// See livestream-arena/docs/designs/0001-live-auth-hybrid.md.
+	// See livestream-arena/docs/designs/0001-live-auth-hybrid.md and 0008.
 	// Requests matching authHTTPExclude never reach Java (keep it empty).
 	enc, _ := json.Marshal(struct {
 		IP        string     `json:"ip"`
@@ -239,6 +241,7 @@ func (m *Manager) authenticateHTTP(req *Request, token string) (*Result, error) 
 		ID        *uuid.UUID `json:"id"`
 		Query     string     `json:"query"`
 		UserAgent string     `json:"userAgent"`
+		Encrypted bool       `json:"encrypted"` // Arena fork (design 0008)
 	}{
 		IP:        req.IP.String(),
 		User:      req.Credentials.User,
@@ -250,6 +253,7 @@ func (m *Manager) authenticateHTTP(req *Request, token string) (*Result, error) 
 		ID:        req.ID,
 		Query:     req.Query,
 		UserAgent: req.UserAgent,
+		Encrypted: req.Encrypted,
 	})
 
 	tr := &http.Transport{
@@ -285,14 +289,17 @@ func (m *Manager) authenticateHTTP(req *Request, token string) (*Result, error) 
 	var expireAt *time.Time
 	user := req.Credentials.User
 	var jti string
+	var srtPassphrase string
 
 	// [ARENA / JAVA] Response body of the Java auth service (all fields optional):
 	//
-	//   200 {"user": "<JWT sub>", "jti": "<JWT jti>"}
+	//   200 {"user": "<ticket sub>", "jti": "<ticket jti>", "srt_passphrase": "<p>"}
 	//
-	// - user, jti: identity of the token. Stored on the connection, shown as
-	//   "user"/"jti" in /v3/rtmpconns (Java uses them to find the publisher to
-	//   kick) and passed to hooks as MTX_USER/MTX_JTI (Kafka STREAM_START).
+	// - user, jti: identity of the ticket. Stored on the connection, shown as
+	//   "user"/"jti" in /v3/rtmpconns and /v3/srtconns and passed to hooks as
+	//   MTX_USER/MTX_JTI (Kafka STREAM_START).
+	// - srt_passphrase (srts only): passphrase of this SRT session; replaces the
+	//   path's srtPublishPassphrase.
 	//   Omit them and mediamtx falls back to the basic-auth user and empty jti.
 	// - expireAt (optional): mediamtx closes the connection at this time. Arena
 	//   does NOT send it for publish, so a live is never cut when the token
@@ -305,6 +312,8 @@ func (m *Manager) authenticateHTTP(req *Request, token string) (*Result, error) 
 			ExpireAt *time.Time `json:"expireAt"`
 			User     string     `json:"user"` // Arena fork
 			JTI      string     `json:"jti"`  // Arena fork
+			// Arena fork (design 0008): passphrase of an encrypted SRT publish.
+			SRTPassphrase string `json:"srt_passphrase"`
 		}
 
 		err = json.Unmarshal(resBody, &out)
@@ -317,10 +326,11 @@ func (m *Manager) authenticateHTTP(req *Request, token string) (*Result, error) 
 				user = out.User
 			}
 			jti = out.JTI
+			srtPassphrase = out.SRTPassphrase
 		}
 	}
 
-	return &Result{User: user, JTI: jti, ExpiresAt: expireAt}, nil
+	return &Result{User: user, JTI: jti, ExpiresAt: expireAt, SRTPassphrase: srtPassphrase}, nil
 }
 
 func (m *Manager) authenticateJWT(req *Request, token string) (*Result, error) {
