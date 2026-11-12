@@ -36,6 +36,9 @@
 logLevel: info
 logDestinations: [stdout, file]
 logFile: /pvc/live/logs/mediamtx.log  # overridden by MTX_LOGFILE (entrypoint)
+# Default 10 s: a room-composite Egress that stalls >10 s when a host leaves (layout change) is cut and then
+# fails ("stream wedged"). 30 s lets it recover (e2e run-room.sh step 4, 2026-11-11).
+readTimeout: 30s
 
 rtmp: true
 rtmpAddress: :1935
